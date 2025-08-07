@@ -3332,29 +3332,44 @@ function getWebAppScript() {
         const plantaNombre = e.target.value;
         const plantaId = e.target.selectedOptions[0]?.dataset.id;
         const codigoParque = e.target.selectedOptions[0]?.dataset.codigo;
-        const jefeFaenaSelect = document.getElementById('jefeFaena');
-
+        
+        const jefeFaenaSelect = document.getElementById('jefeFaena');  // ← IMPORTANTE
+        
         if (!plantaNombre) {
             document.getElementById('aerogenerador').innerHTML = '<option value="">Seleccionar aerogenerador...</option>';
             document.getElementById('personalDisponible').innerHTML = '<div class="loading">Seleccione una planta primero</div>';
-            jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';
+            jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';  // ← IMPORTANTE
             return;
         }
         
+        // Cargar aerogeneradores
         await loadAerogeneradores(plantaNombre);
+        
+        // Cargar personal del parque
         await loadPersonalByParque(plantaNombre);
-
+        
+        // ⭐ ESTA ES LA PARTE NUEVA QUE DEBES AGREGAR ⭐
+        // Poblar Jefe de Faena con el personal del parque
         jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';
+        
         if (personalByParque[plantaNombre] && personalByParque[plantaNombre].length > 0) {
             personalByParque[plantaNombre].forEach(persona => {
                 const option = document.createElement('option');
                 option.value = persona.nombre;
-                option.textContent = persona.nombre + ' - ' + (persona.empresa || '');
+                option.textContent = `${persona.nombre} - ${persona.empresa || ''}`;
                 option.dataset.id = persona.id;
                 option.dataset.empresa = persona.empresa || '';
                 option.dataset.rol = persona.rol || '';
                 jefeFaenaSelect.appendChild(option);
             });
+        } else {
+            // Si no hay personal en el parque, mostrar mensaje
+            const option = document.createElement('option');
+            option.value = "";
+            option.textContent = "No hay personal asignado a este parque";
+            option.disabled = true;
+            jefeFaenaSelect.appendChild(option);
+        }
     }
     
     async function loadAerogeneradores(plantaNombre) {
