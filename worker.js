@@ -772,6 +772,8 @@ async function handleApiRequest(request, corsHeaders, env, services) {
     switch (endpoint) {
       case 'login':
         return await handleLogin(request, corsHeaders, env, services);
+      case 'change-password':
+        return await handleChangePassword(request, corsHeaders, env, services);
       case 'users':
         return await handleUsers(request, corsHeaders, env);
       case 'personal':
@@ -889,7 +891,7 @@ async function handleLogin(request, corsHeaders, env, services) {
         success: false,
         error: 'Contraseña incorrecta'
       });
-      
+
       return new Response(JSON.stringify({ 
         success: false, 
         message: 'Contraseña incorrecta' 
@@ -898,7 +900,21 @@ async function handleLogin(request, corsHeaders, env, services) {
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
-    
+
+      // NUEVO: Verificar si la contraseña es temporal
+    const esPasswordTemporal = userResult.password_temporal === 1;
+      // Si es temporal, incluir en el response
+    if (esPasswordTemporal) {
+        return new Response(JSON.stringify({ 
+        success: true,
+        token,
+        user: userData,
+        requirePasswordChange: true  // ← INDICADOR CLAVE
+        }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+    }
+
     // Actualizar hash si es necesario
     if (verification.needsUpdate) {
       try {
@@ -1010,6 +1026,87 @@ async function handlePersonal(request, corsHeaders, env) {
     return new Response(JSON.stringify({ 
       error: 'Error loading personal', 
       details: error.message 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+// Nueva función:
+async function handleChangePassword(request, corsHeaders, env, services) {
+  const { authService, auditLogger } = services;
+  
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'No autorizado'
+      }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    const token = authHeader.substring(7);
+    const userToken = await authService.verifyToken(token);
+    
+    const { newPassword } = await request.json();
+    
+    // Validar contraseña
+    if (!newPassword || newPassword.length < 8) {
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'La contraseña debe tener al menos 8 caracteres'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Hashear nueva contraseña
+    const hashedPassword = await authService.hashPassword(newPassword);
+    
+    // Actualizar contraseña y marcar como no temporal
+    await env.DB_MASTER.prepare(`
+      UPDATE usuarios 
+      SET password_hash = ?,
+          password_temporal = 0
+      WHERE id = ?
+    `).bind(hashedPassword, userToken.sub).run();
+    
+    // Log
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'PASSWORD_CHANGED',
+        resource: 'auth',
+        userId: userToken.sub,
+        userEmail: userToken.email,
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: true
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: 'Contraseña actualizada exitosamente'
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error cambiando contraseña:', error);
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: 'Error al cambiar la contraseña'
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -2418,6 +2515,36 @@ function getWebApp() {
         '</div>' +
     '</div>' +
 
+    '<!-- MODAL DE CAMBIO DE CONTRAEÑA OBLIGATORIO -->' +
+    '<div id="changePasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">' +
+        '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 480px; width: 90%; margin: 20px;">' +
+            '<h3 style="margin-bottom: 24px; color: var(--primary-color);">Cambio de Contraseña Obligatorio</h3>' +
+            
+            '<div class="warning" style="background: rgba(243, 156, 18, 0.1); color: var(--warning-color); padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(243, 156, 18, 0.2);">' +
+                '<strong>⚠️ Primera vez ingresando</strong><br>' +
+                'Por seguridad, debes cambiar tu contraseña temporal.' +
+            '</div>' +
+            
+            '<div class="form-group">' +
+                '<label for="mandatoryNewPassword">Nueva Contraseña</label>' +
+                '<input type="password" id="mandatoryNewPassword" required placeholder="Mínimo 8 caracteres">' +
+            '</div>' +
+            
+            '<div class="form-group">' +
+                '<label for="mandatoryConfirmPassword">Confirmar Nueva Contraseña</label>' +
+                '<input type="password" id="mandatoryConfirmPassword" required placeholder="Repite la contraseña">' +
+            '</div>' +
+            
+            '<div id="changePasswordError" class="error" style="display: none; margin-bottom: 16px;"></div>' +
+            
+            '<button id="submitPasswordChangeBtn" class="btn" style="width: 100%;">Cambiar Contraseña y Continuar</button>' +
+            
+            '<p style="margin-top: 16px; font-size: 12px; color: var(--text-secondary); text-align: center;">' +
+                'No podrás acceder al sistema hasta cambiar tu contraseña' +
+            '</p>' +
+        '</div>' +
+    '</div>'
+
     '<script>' + getWebAppScript() + '</script>' +
 '</body>' +
 '</html>';
@@ -3174,9 +3301,12 @@ function getWebAppScript() {
                 if (sessionId) {
                     sessionStorage.setItem('sessionId', sessionId);
                 }
-                
-                await loadAppData();
-                showApp();
+                if (result.requirePasswordChange) {
+                    showChangePasswordModal();
+                } else {
+                    await loadAppData();
+                    showApp();
+                }
             } else {
                 showLoginError(result.message || 'Error al iniciar sesión');
             }
@@ -3187,7 +3317,76 @@ function getWebAppScript() {
             loginBtn.textContent = 'Iniciar Sesión';
         }
     }
+
+    // Nueva función para mostrar modal de cambio obligatorio
+    function showChangePasswordModal() {
+        document.getElementById('changePasswordModal').style.display = 'flex';
+        document.getElementById('submitPasswordChangeBtn').addEventListener('click', handleMandatoryPasswordChange);
+    }
     
+    async function handleMandatoryPasswordChange() {
+    const newPassword = document.getElementById('mandatoryNewPassword').value;
+    const confirmPassword = document.getElementById('mandatoryConfirmPassword').value;
+    const errorDiv = document.getElementById('changePasswordError');
+    const submitBtn = document.getElementById('submitPasswordChangeBtn');
+    
+    // Validaciones
+    if (!newPassword || !confirmPassword) {
+        errorDiv.textContent = 'Ambos campos son requeridos';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        errorDiv.textContent = 'Las contraseñas no coinciden';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword.length < 8) {
+        errorDiv.textContent = 'La contraseña debe tener al menos 8 caracteres';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Cambiando contraseña...';
+    
+    try {
+        const response = await fetch(API_BASE + '/change-password', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({ newPassword })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Ocultar modal
+            document.getElementById('changePasswordModal').style.display = 'none';
+            
+            // Cargar la aplicación
+            await loadAppData();
+            showApp();
+            
+            // Mostrar mensaje de éxito
+            alert('Contraseña actualizada exitosamente');
+        } else {
+            errorDiv.textContent = result.error || 'Error al cambiar la contraseña';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Error de conexión';
+        errorDiv.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Cambiar Contraseña y Continuar';
+    }
+}
+
     async function verifyAndLoadApp() {
         try {
             const response = await ClientSecurity.makeSecureRequest('/health');
