@@ -1,0 +1,28 @@
+name = "pt-wind"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB_MASTER"
+database_name = "master"
+database_id = "807bac52-b883-46e7-93b0-f6dccbfe22fd"
+
+[[d1_databases]]
+binding = "DB_HSEQ"
+database_name = "hseq"
+database_id = "5b97ab31-93cd-4f9c-aad4-9e8b1f32a74a"
+
+[[d1_databases]]
+binding = "DB_PERMISOS"
+database_name = "permisos-trabajo-db"
+database_id = "5b97ab31-93cd-4f9c-aad4-9e8b1f32a74a"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "daaf4597a17941e89b92d03e5bf89ea9"
+
+[vars]
+# Variables públicas si las necesitas
+
+# Secretos (usar wrangler secret put)
+# JWT_SECRET
+# ALLOWED_ORIGINS
