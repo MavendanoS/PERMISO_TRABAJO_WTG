@@ -3344,17 +3344,17 @@ function getWebAppScript() {
         await loadAerogeneradores(plantaNombre);
         await loadPersonalByParque(plantaNombre);
 
-            jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';
-    if (personalByParque[plantaNombre] && personalByParque[plantaNombre].length > 0) {
-        personalByParque[plantaNombre].forEach(persona => {
-            const option = document.createElement('option');
-            option.value = persona.nombre;
-            option.textContent = persona.nombre + ' - ' + (persona.empresa || '');
-            option.dataset.id = persona.id;
-            option.dataset.empresa = persona.empresa || '';
-            option.dataset.rol = persona.rol || '';
-            jefeFaenaSelect.appendChild(option);
-        });
+        jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';
+        if (personalByParque[plantaNombre] && personalByParque[plantaNombre].length > 0) {
+            personalByParque[plantaNombre].forEach(persona => {
+                const option = document.createElement('option');
+                option.value = persona.nombre;
+                option.textContent = persona.nombre + ' - ' + (persona.empresa || '');
+                option.dataset.id = persona.id;
+                option.dataset.empresa = persona.empresa || '';
+                option.dataset.rol = persona.rol || '';
+                jefeFaenaSelect.appendChild(option);
+            });
     }
     
     async function loadAerogeneradores(plantaNombre) {
