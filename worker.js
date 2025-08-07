@@ -3356,7 +3356,7 @@ function getWebAppScript() {
             personalByParque[plantaNombre].forEach(persona => {
                 const option = document.createElement('option');
                 option.value = persona.nombre;
-                option.textContent = `${persona.nombre} - ${persona.empresa || ''}`;
+                option.textContent = \`\${persona.nombre} - \${persona.empresa || ''}\`;
                 option.dataset.id = persona.id;
                 option.dataset.empresa = persona.empresa || '';
                 option.dataset.rol = persona.rol || '';
