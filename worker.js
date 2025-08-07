@@ -3385,7 +3385,6 @@ function getWebAppScript() {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Cambiar Contraseña y Continuar';
     }
-}
 
     async function verifyAndLoadApp() {
         try {
