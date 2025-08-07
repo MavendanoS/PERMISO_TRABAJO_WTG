@@ -14,7 +14,7 @@ database_id = "5b97ab31-93cd-4f9c-aad4-9e8b1f32a74a"
 [[d1_databases]]
 binding = "DB_PERMISOS"
 database_name = "permisos-trabajo-db"
-database_id = "5b97ab31-93cd-4f9c-aad4-9e8b1f32a74a"
+database_id = "5682a655-fb73-41e3-9523-f4aa0e2c2cab"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
