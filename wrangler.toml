@@ -25,5 +25,5 @@ id = "daaf4597a17941e89b92d03e5bf89ea9"
 # Variables públicas si las necesitas
 
 # Secretos (usar wrangler secret put)
-env.JWT_SECRET
-# ALLOWED_ORIGINS
+#JWT_SECRET
+# ALLOWED_ORIGINS 
