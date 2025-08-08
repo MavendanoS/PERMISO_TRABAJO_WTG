@@ -3795,6 +3795,12 @@ function getWebAppScript() {
     async function handleCreatePermiso(e) {
         e.preventDefault();
         
+        // Deshabilitar el botón de submit para evitar múltiples envíos
+        const submitButton = e.target.querySelector('button[type="submit"]');
+        const originalText = submitButton.textContent;
+        submitButton.disabled = true;
+        submitButton.textContent = 'CREANDO PERMISO...';
+        
         const plantaSelect = document.getElementById('planta');
         const aerogeneradorSelect = document.getElementById('aerogenerador');
         const jefeFaenaSelect = document.getElementById('jefeFaena');
@@ -3822,11 +3828,17 @@ function getWebAppScript() {
         
         if (!permisoData.planta || !permisoData.descripcion || !permisoData.jefeFaena) {
             alert('Por favor complete los campos obligatorios');
+            // Re-habilitar el botón si hay error de validación
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
             return;
         }
         
         if (personalSeleccionado.length === 0) {
             alert('Debe seleccionar al menos una persona');
+            // Re-habilitar el botón si hay error de validación
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
             return;
         }
         
@@ -3848,12 +3860,22 @@ function getWebAppScript() {
                 
                 await loadPermisos();
                 switchTab('consultar');
+                
+                // Re-habilitar el botón después del éxito
+                submitButton.disabled = false;
+                submitButton.textContent = originalText;
             } else {
                 alert('Error al crear el permiso: ' + (response.error || 'Error desconocido'));
+                // Re-habilitar el botón si hay error
+                submitButton.disabled = false;
+                submitButton.textContent = originalText;
             }
         } catch (error) {
             console.error('Error creando permiso:', error);
             alert('Error al crear el permiso: ' + error.message);
+            // Re-habilitar el botón si hay error
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
         }
     }
     
