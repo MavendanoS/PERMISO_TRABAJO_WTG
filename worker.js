@@ -1327,6 +1327,20 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
     }
     
     try {
+      // Validar que el usuario puede crear permisos para esta planta
+      const esEnel = currentUser?.esEnel || false;
+      const parquesAutorizados = currentUser?.parques || [];
+      
+      if (!esEnel && !parquesAutorizados.includes(permisoData.planta)) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'No tiene autorización para crear permisos en esta planta'
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+      
       // Obtener número correlativo
       let numeroCorrelativo = 1;
       
@@ -1492,6 +1506,7 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
         pc.usuario_cierre,
         pc.fecha_cierre,
         GROUP_CONCAT(DISTINCT pp.personal_nombre || ' (' || pp.personal_empresa || ')') as personal_asignado,
+        GROUP_CONCAT(DISTINCT pp.personal_id) as personal_ids,
         GROUP_CONCAT(DISTINCT pa.actividad_nombre) as actividades
       FROM permisos_trabajo p
       LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
@@ -3487,14 +3502,21 @@ function getWebAppScript() {
         const select = document.getElementById('planta');
         select.innerHTML = '<option value="">Seleccionar planta...</option>';
         
+        // Filtrar parques según los autorizados del usuario
+        const parquesAutorizados = currentUser?.parques || [];
+        const esEnel = currentUser?.esEnel || false;
+        
         parquesData.forEach(parque => {
-            // Ahora los datos vienen directamente, no en properties
-            const option = document.createElement('option');
-            option.value = parque.nombre;
-            option.textContent = parque.nombre;
-            option.dataset.id = parque.id;
-            option.dataset.codigo = parque.codigo || '';
-            select.appendChild(option);
+            // Si es Enel, puede ver todos los parques
+            // Si no, solo los parques autorizados
+            if (esEnel || parquesAutorizados.includes(parque.nombre)) {
+                const option = document.createElement('option');
+                option.value = parque.nombre;
+                option.textContent = parque.nombre;
+                option.dataset.id = parque.id;
+                option.dataset.codigo = parque.codigo || '';
+                select.appendChild(option);
+            }
         });
     }
     
@@ -3897,13 +3919,23 @@ function getWebAppScript() {
     function displayPermisos() {
         const container = document.getElementById('permisosContainer');
         
-        if (permisosData.length === 0) {
-            container.innerHTML = '<div class="loading">No hay permisos registrados</div>';
+        // Filtrar permisos según plantas autorizadas
+        const parquesAutorizados = currentUser?.parques || [];
+        const esEnel = currentUser?.esEnel || false;
+        
+        const permisosFiltrados = permisosData.filter(permiso => {
+            // Si es Enel, puede ver todos los permisos
+            // Si no, solo los de sus parques autorizados
+            return esEnel || parquesAutorizados.includes(permiso.planta_nombre);
+        });
+        
+        if (permisosFiltrados.length === 0) {
+            container.innerHTML = '<div class="loading">No hay permisos registrados para sus plantas autorizadas</div>';
             return;
         }
         
         container.innerHTML = '';
-        permisosData.forEach(permiso => {
+        permisosFiltrados.forEach(permiso => {
             const card = createPermisoCard(permiso);
             container.appendChild(card);
         });
@@ -3915,6 +3947,15 @@ function getWebAppScript() {
         
         const estadoClass = 'estado-' + (permiso.estado || 'CREADO').toLowerCase();
         const esEnel = currentUser?.esEnel || false;
+        
+        // Verificar si el usuario puede cerrar el permiso
+        const userEmail = currentUser?.email?.toLowerCase();
+        const jefeFaenaId = permiso.jefe_faena_id?.toLowerCase();
+        const personalIds = permiso.personal_ids ? permiso.personal_ids.toLowerCase().split(',') : [];
+        
+        const puedeCerrarPermiso = esEnel || 
+                                   userEmail === jefeFaenaId || 
+                                   personalIds.includes(userEmail);
         
         card.innerHTML = \`
             <div class="permiso-header">
@@ -3961,7 +4002,7 @@ function getWebAppScript() {
                 \${permiso.estado === 'CREADO' && esEnel ? 
                     \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
                 
-                \${permiso.estado === 'ACTIVO' ? 
+                \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
                     \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
                 
                 \${permiso.estado === 'CERRADO' ? 
@@ -3981,7 +4022,16 @@ function getWebAppScript() {
             return;
         }
         
-        const filtered = permisosData.filter(p =>
+        // Filtrar primero por parques autorizados
+        const parquesAutorizados = currentUser?.parques || [];
+        const esEnel = currentUser?.esEnel || false;
+        
+        const permisosAutorizados = permisosData.filter(permiso => {
+            return esEnel || parquesAutorizados.includes(permiso.planta_nombre);
+        });
+        
+        // Luego filtrar por término de búsqueda
+        const filtered = permisosAutorizados.filter(p =>
             txt(p.numero_pt).includes(searchTerm) ||
             txt(p.planta_nombre).includes(searchTerm) ||
             txt(p.descripcion).includes(searchTerm) ||
