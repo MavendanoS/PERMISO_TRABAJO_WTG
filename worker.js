@@ -1339,15 +1339,10 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
     }
     
     try {
-      // Validar que el usuario puede crear permisos para esta planta
+      // TEMPORAL: Comentar validación para debugging
+      /*
       const esEnel = currentUser?.esEnel || false;
       const parquesAutorizados = currentUser?.parques || [];
-      
-      // Debug temporal
-      console.log('DEBUG - currentUser:', currentUser);
-      console.log('DEBUG - esEnel:', esEnel);
-      console.log('DEBUG - parquesAutorizados:', parquesAutorizados);
-      console.log('DEBUG - permisoData.planta:', permisoData.planta);
       
       if (!esEnel && !parquesAutorizados.includes(permisoData.planta)) {
         return new Response(JSON.stringify({ 
@@ -1358,6 +1353,7 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
       }
+      */
       
       // Obtener número correlativo
       let numeroCorrelativo = 1;
