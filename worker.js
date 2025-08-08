@@ -2542,10 +2542,9 @@ function getWebApp() {
             '<p style="margin-top: 16px; font-size: 12px; color: var(--text-secondary); text-align: center;">' +
                 'No podrás acceder al sistema hasta cambiar tu contraseña' +
             '</p>' +
-        '</div>' +
-    '</div>'
-
-    '<script>' + getWebAppScript() + '</script>' +
+    '</div>' +
+  '</div>' +
+  '<script>' + getWebAppScript() + '</script>' +
 '</body>' +
 '</html>';
 }
@@ -4276,5 +4275,5 @@ function getWebAppScript() {
     resetInactivityTimer();
     
     console.log('Sistema de seguridad activo - D1 Database Edition');
-`;
+  `;
 }
