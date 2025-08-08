@@ -1343,6 +1343,12 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
       const esEnel = currentUser?.esEnel || false;
       const parquesAutorizados = currentUser?.parques || [];
       
+      // Debug temporal
+      console.log('DEBUG - currentUser:', currentUser);
+      console.log('DEBUG - esEnel:', esEnel);
+      console.log('DEBUG - parquesAutorizados:', parquesAutorizados);
+      console.log('DEBUG - permisoData.planta:', permisoData.planta);
+      
       if (!esEnel && !parquesAutorizados.includes(permisoData.planta)) {
         return new Response(JSON.stringify({ 
           success: false, 
