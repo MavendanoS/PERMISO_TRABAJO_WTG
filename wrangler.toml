@@ -21,6 +21,11 @@ database_id = "5682a655-fb73-41e3-9523-f4aa0e2c2cab"
 binding = "RATE_LIMIT_KV"
 id = "daaf4597a17941e89b92d03e5bf89ea9"
 
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
+
+
 [vars]
 # Variables públicas si las necesitas
 
