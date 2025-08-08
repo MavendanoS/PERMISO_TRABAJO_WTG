@@ -4276,5 +4276,5 @@ function getWebAppScript() {
     resetInactivityTimer();
     
     console.log('Sistema de seguridad activo - D1 Database Edition');
-  `;
+`;
 }
