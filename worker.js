@@ -1363,7 +1363,7 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
         FROM permisos_trabajo 
         WHERE planta_nombre = ?
       `).bind(permisoData.planta).first();
-      
+       
       numeroCorrelativo = (lastPermiso?.ultimo_numero || 0) + 1;
       
       const codigoParque = permisoData.codigoParque || 
@@ -3963,13 +3963,14 @@ function getWebAppScript() {
         const esEnel = currentUser?.esEnel || false;
         
         // Verificar si el usuario puede cerrar el permiso
+        const userId = currentUser?.id;
         const userEmail = currentUser?.email?.toLowerCase();
-        const jefeFaenaId = permiso.jefe_faena_id?.toLowerCase();
-        const personalIds = permiso.personal_ids ? permiso.personal_ids.toLowerCase().split(',') : [];
+        const jefeFaenaId = permiso.jefe_faena_id;
+        const personalIds = permiso.personal_ids ? permiso.personal_ids.split(',') : [];
         
         const puedeCerrarPermiso = esEnel || 
-                                   userEmail === jefeFaenaId || 
-                                   personalIds.includes(userEmail);
+                                   userId === jefeFaenaId || 
+                                   personalIds.includes(userId);
         
         card.innerHTML = \`
             <div class="permiso-header">
