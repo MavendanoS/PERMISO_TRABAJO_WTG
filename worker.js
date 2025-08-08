@@ -901,19 +901,6 @@ async function handleLogin(request, corsHeaders, env, services) {
       });
     }
 
-      // NUEVO: Verificar si la contraseña es temporal
-    const esPasswordTemporal = userResult.password_temporal === 1;
-      // Si es temporal, incluir en el response
-    if (esPasswordTemporal) {
-        return new Response(JSON.stringify({ 
-        success: true,
-        token,
-        user: userData,
-        requirePasswordChange: true  // ← INDICADOR CLAVE
-        }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
-    }
 
     // Actualizar hash si es necesario
     if (verification.needsUpdate) {
@@ -949,6 +936,19 @@ async function handleLogin(request, corsHeaders, env, services) {
     
     // Generar JWT
     const token = await authService.generateToken(userData);
+    
+    // AQUÍ VA: Verificar si la contraseña es temporal
+    const esPasswordTemporal = userResult.password_temporal === 1;
+    if (esPasswordTemporal) {
+        return new Response(JSON.stringify({ 
+            success: true,
+            token,
+            user: userData,
+            requirePasswordChange: true  // ← INDICADOR CLAVE
+        }), {
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+    }
     
     // Log exitoso
     await auditLogger.log({
@@ -3222,6 +3222,8 @@ function getWebAppScript() {
         console.log('Inicializando aplicación...');
         
         const storedToken = sessionStorage.getItem('authToken');
+        const storedSessionId = sessionStorage.getItem('sessionId');  // ← AGREGAR
+        if (storedSessionId) sessionId = storedSessionId;  // ← AGREGAR
         if (storedToken) {
             authToken = storedToken;
             await verifyAndLoadApp();
@@ -3238,9 +3240,15 @@ function getWebAppScript() {
     // ========================================================================
     
     function setupEventListeners() {
+        // helper seguro para no romper si falta un elemento
+        const on = (id, ev, fn, opts) => { 
+            const el = document.getElementById(id); 
+            if (el) el.addEventListener(ev, fn, opts); 
+        };
+        
         // Login
-        document.getElementById('loginForm').addEventListener('submit', handleLogin);
-        document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+        on('loginForm', 'submit', handleLogin);
+        on('logoutBtn', 'click', handleLogout);
         
         // Tabs
         document.querySelectorAll('.tab').forEach(tab => {
@@ -3248,26 +3256,27 @@ function getWebAppScript() {
         });
         
         // Formulario de permiso
-        document.getElementById('permisoForm').addEventListener('submit', handleCreatePermiso);
+        on('permisoForm', 'submit', handleCreatePermiso);
         
         // Selectores
-        document.getElementById('planta').addEventListener('change', handlePlantaChange);
-        document.getElementById('tipoMantenimiento').addEventListener('change', handleTipoMantenimientoChange);
+        on('planta', 'change', handlePlantaChange);
+        on('tipoMantenimiento', 'change', handleTipoMantenimientoChange);
         
         // Personal
-        document.getElementById('addPersonalBtn').addEventListener('click', addSelectedPersonal);
-        document.getElementById('removePersonalBtn').addEventListener('click', removeSelectedPersonal);
+        on('addPersonalBtn', 'click', addSelectedPersonal);
+        on('removePersonalBtn', 'click', removeSelectedPersonal);
         
         // Botones
-        document.getElementById('generateRegisterBtn').addEventListener('click', generateRegister);
-        document.getElementById('refreshPermisosBtn').addEventListener('click', loadPermisos);
-        document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
-        document.getElementById('searchPermiso').addEventListener('input', filterPermisos);
+        on('generateRegisterBtn', 'click', generateRegister);
+        on('refreshPermisosBtn', 'click', loadPermisos);
+        on('clearSearchBtn', 'click', clearSearch);
+        const search = document.getElementById('searchPermiso'); 
+        if (search) search.addEventListener('input', filterPermisos);
         
         // Modal de cierre
-        document.getElementById('cancelarCierreBtn').addEventListener('click', closeCerrarModal);
-        document.getElementById('confirmarCierreBtn').addEventListener('click', handleConfirmarCierre);
-        document.getElementById('addMaterialBtn').addEventListener('click', addMaterial);
+        on('cancelarCierreBtn', 'click', closeCerrarModal);
+        on('confirmarCierreBtn', 'click', handleConfirmarCierre);
+        on('addMaterialBtn', 'click', addMaterial);
     }
     
     async function handleLogin(e) {
@@ -3321,7 +3330,8 @@ function getWebAppScript() {
     // Nueva función para mostrar modal de cambio obligatorio
     function showChangePasswordModal() {
         document.getElementById('changePasswordModal').style.display = 'flex';
-        document.getElementById('submitPasswordChangeBtn').addEventListener('click', handleMandatoryPasswordChange);
+        document.getElementById('submitPasswordChangeBtn')
+            .addEventListener('click', handleMandatoryPasswordChange, { once: true });
     }
     
     async function handleMandatoryPasswordChange() {
@@ -3733,7 +3743,8 @@ function getWebAppScript() {
             const response = await ClientSecurity.makeSecureRequest('/matriz-riesgos?actividades=' + encodeURIComponent(actividadesNombres));
             
             // Los datos vienen directamente de D1, no en properties
-            matrizRiesgosSeleccionada = response.results.map(item => ({
+            const results = Array.isArray(response?.results) ? response.results : [];
+            matrizRiesgosSeleccionada = results.map(item => ({
                 id: item.id,
                 codigo: item.codigo || 0,
                 actividad: item.actividad || '',
@@ -3940,18 +3951,19 @@ function getWebAppScript() {
     
     function filterPermisos() {
         const searchTerm = document.getElementById('searchPermiso').value.toLowerCase();
+        const txt = v => String(v ?? '').toLowerCase();
         
         if (!searchTerm) {
             displayPermisos();
             return;
         }
         
-        const filtered = permisosData.filter(permiso => {
-            return permiso.numero_pt.toLowerCase().includes(searchTerm) ||
-                   permiso.planta_nombre.toLowerCase().includes(searchTerm) ||
-                   permiso.descripcion.toLowerCase().includes(searchTerm) ||
-                   (permiso.jefe_faena_nombre && permiso.jefe_faena_nombre.toLowerCase().includes(searchTerm));
-        });
+        const filtered = permisosData.filter(p =>
+            txt(p.numero_pt).includes(searchTerm) ||
+            txt(p.planta_nombre).includes(searchTerm) ||
+            txt(p.descripcion).includes(searchTerm) ||
+            txt(p.jefe_faena_nombre).includes(searchTerm)
+        );
         
         const container = document.getElementById('permisosContainer');
         if (filtered.length === 0) {
