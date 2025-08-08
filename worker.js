@@ -1106,7 +1106,9 @@ async function handleChangePassword(request, corsHeaders, env, services) {
     console.error('Error cambiando contraseña:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: 'Error al cambiar la contraseña'
+      error: 'Error al cambiar la contraseña',
+      debug: error.message || 'Error desconocido',
+      debugStack: error.stack 
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
