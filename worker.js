@@ -923,6 +923,18 @@ async function handleLogin(request, corsHeaders, env, services) {
     const esEnel = userResult.empresa?.toLowerCase().includes('enel') || 
                   userResult.email?.toLowerCase().includes('@enel.');
     
+    // Parsear parques_autorizados como JSON
+    let parquesAutorizados = [];
+    if (userResult.parques_autorizados) {
+      try {
+        parquesAutorizados = JSON.parse(userResult.parques_autorizados);
+      } catch (error) {
+        console.error('Error parseando parques_autorizados:', error);
+        // Si no es JSON válido, intentar con split por si es formato antiguo
+        parquesAutorizados = userResult.parques_autorizados.split(',').map(p => p.trim());
+      }
+    }
+
     const userData = {
       id: userResult.id,
       usuario: userResult.usuario,
@@ -930,7 +942,7 @@ async function handleLogin(request, corsHeaders, env, services) {
       rol: userResult.rol,
       empresa: userResult.empresa,
       esEnel: esEnel,
-      parques: userResult.parques_autorizados ? userResult.parques_autorizados.split(',') : [],
+      parques: parquesAutorizados,
       puedeActualizarPersonal: userResult.puede_actualizar_personal === 1
     };
     
