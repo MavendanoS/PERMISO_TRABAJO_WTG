@@ -919,8 +919,9 @@ async function handleLogin(request, corsHeaders, env, services) {
       UPDATE usuarios SET ultimo_login = ? WHERE id = ?
     `).bind(getLocalDateTime(), userResult.id).run();
     
-    // Determinar si es usuario Enel
-    const esEnel = userResult.empresa?.toLowerCase().includes('enel') || 
+    // Determinar si es usuario Enel basado en el rol
+    const esEnel = userResult.rol === 'Supervisor Enel' || 
+                  userResult.empresa?.toLowerCase().includes('enel') || 
                   userResult.email?.toLowerCase().includes('@enel.');
     
     // Parsear parques_autorizados como JSON
@@ -941,6 +942,9 @@ async function handleLogin(request, corsHeaders, env, services) {
       email: userResult.email,
       rol: userResult.rol,
       empresa: userResult.empresa,
+      cargo: userResult.cargo,
+      rut: userResult.rut,
+      telefono: userResult.telefono,
       esEnel: esEnel,
       parques: parquesAutorizados,
       puedeActualizarPersonal: userResult.puede_actualizar_personal === 1
@@ -1023,9 +1027,14 @@ async function handleUsers(request, corsHeaders, env) {
 
 async function handlePersonal(request, corsHeaders, env) {
   try {
+    // Ahora lee de usuarios unificada, no de personal_tecnico
     const result = await env.DB_MASTER.prepare(`
-      SELECT * FROM personal_tecnico
-      ORDER BY nombre ASC
+      SELECT id, usuario as nombre, email, empresa, cargo as rol, 
+             rut, telefono, parques_autorizados, estado
+      FROM usuarios
+      WHERE rol IN ('Lead Technician', 'Technician', 'Supervisor Enel')
+      AND estado = 'Activo'
+      ORDER BY usuario ASC
     `).all();
     
     return new Response(JSON.stringify({
@@ -1133,15 +1142,20 @@ async function handlePersonalByParque(request, corsHeaders, env) {
     const url = new URL(request.url);
     const parqueNombre = InputSanitizer.sanitizeString(url.searchParams.get('parque'));
     
-    let query = `SELECT * FROM personal_tecnico`;
+    // Ahora busca en tabla usuarios unificada
+    let query = `SELECT id, usuario as nombre, email, empresa, 
+                        cargo as rol, rut, telefono, parques_autorizados
+                 FROM usuarios 
+                 WHERE estado = 'Activo'
+                 AND rol != 'Admin'`;
     let params = [];
     
     if (parqueNombre) {
-      query += ` WHERE parques_autorizados LIKE ?`;
+      query += ` AND parques_autorizados LIKE ?`;
       params.push(`%${parqueNombre}%`);
     }
     
-    query += ` ORDER BY nombre ASC`;
+    query += ` ORDER BY usuario ASC`;
     
     const result = await env.DB_MASTER.prepare(query).bind(...params).all();
     
@@ -1164,9 +1178,14 @@ async function handlePersonalByParque(request, corsHeaders, env) {
 
 async function handleSupervisores(request, corsHeaders, env) {
   try {
+    // Ahora filtra usuarios con rol Supervisor Enel de tabla unificada
     const result = await env.DB_MASTER.prepare(`
-      SELECT * FROM supervisores
-      ORDER BY nombre ASC
+      SELECT id, usuario as nombre, email, cargo, telefono, rut,
+             parques_autorizados as plantas_asignadas, estado
+      FROM usuarios
+      WHERE rol = 'Supervisor Enel'
+      AND estado = 'Activo'
+      ORDER BY usuario ASC
     `).all();
     
     return new Response(JSON.stringify({
@@ -1401,7 +1420,7 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
       
       const permisoId = insertPermiso.meta.last_row_id;
       
-      // Insertar personal
+      // Insertar personal - ahora usando usuario.id
       if (permisoData.personal && permisoData.personal.length > 0) {
         for (const persona of permisoData.personal) {
           await env.DB_PERMISOS.prepare(`
@@ -1411,7 +1430,7 @@ async function handlePermisos(request, corsHeaders, env, currentUser, services) 
             ) VALUES (?, ?, ?, ?, ?, ?)
           `).bind(
             permisoId, 
-            persona.id || 'unknown', 
+            persona.id, // Ahora es el usuario.id directamente
             persona.nombre || 'Sin nombre', 
             persona.empresa || 'Sin empresa', 
             persona.rol || 'Sin rol',
@@ -3960,17 +3979,19 @@ function getWebAppScript() {
         card.className = 'permiso-card';
         
         const estadoClass = 'estado-' + (permiso.estado || 'CREADO').toLowerCase();
-        const esEnel = currentUser?.esEnel || false;
+        const esEnel = currentUser?.esEnel || currentUser?.rol === 'Supervisor Enel';
         
         // Verificar si el usuario puede cerrar el permiso
-        const userId = currentUser?.id;
-        const userEmail = currentUser?.email?.toLowerCase();
-        const jefeFaenaId = permiso.jefe_faena_id;
-        const personalIds = permiso.personal_ids ? permiso.personal_ids.split(',') : [];
+        // Ahora todos los IDs son de la misma tabla usuarios
+        const userId = currentUser?.id ? currentUser.id.toString() : null;
+        const jefeFaenaId = permiso.jefe_faena_id ? permiso.jefe_faena_id.toString() : null;
+        const personalIds = permiso.personal_ids ? 
+            permiso.personal_ids.split(',').map(id => id.trim()) : [];
         
-        const puedeCerrarPermiso = esEnel || 
-                                   userId === jefeFaenaId || 
-                                   personalIds.includes(userId);
+        const esJefeFaena = userId && userId === jefeFaenaId;
+        const estaEnPersonalAsignado = userId && personalIds.includes(userId);
+        
+        const puedeCerrarPermiso = esEnel || esJefeFaena || estaEnPersonalAsignado;
         
         card.innerHTML = \`
             <div class="permiso-header">
