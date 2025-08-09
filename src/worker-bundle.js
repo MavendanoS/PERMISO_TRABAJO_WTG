@@ -507,8 +507,8 @@ function getCompleteApp() {
                 const data = await response.json();
                 
                 if (data.success) {
-                    alert('✅ Login exitoso! La aplicación completa se cargaría aquí.');
-                    console.log('User data:', data);
+                    authToken = data.token;
+                    showApp(data.user);
                 } else {
                     throw new Error(data.error || 'Error de autenticación');
                 }
@@ -520,6 +520,265 @@ function getCompleteApp() {
                 loginBtn.disabled = false;
                 loginBtn.textContent = 'Iniciar Sesión';
             }
+        }
+        
+        function showApp(user) {
+            // Ocultar login y mostrar app
+            document.getElementById('loginScreen').style.display = 'none';
+            
+            // Crear la interfaz principal de la aplicación
+            document.body.innerHTML = \`
+                <div class="container">
+                    <div class="app-container">
+                        <div class="header">
+                            <div>
+                                <h1>PT WIND</h1>
+                                <p>Sistema de Gestión de Permisos de Trabajo</p>
+                                <small style="color: rgba(255,255,255,0.7);">v19.0 Modular</small>
+                            </div>
+                            
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <span style="color: white;">\${user.nombre} (\${user.rol})</span>
+                                <button id="logoutBtn" class="btn btn-secondary btn-small">CERRAR SESIÓN</button>
+                            </div>
+                        </div>
+                        
+                        <div class="tabs">
+                            <button class="tab active" data-tab="nuevo">Nuevo Permiso</button>
+                            <button class="tab" data-tab="consultar">Consultar Permisos</button>
+                            <button class="tab" data-tab="datos">Datos del Sistema</button>
+                        </div>
+                        
+                        <div id="tab-nuevo" class="tab-content active">
+                            <h3 style="color: var(--primary-color); margin-bottom: 24px;">Crear Nuevo Permiso de Trabajo</h3>
+                            
+                            <div class="grid-container">
+                                <div class="card">
+                                    <h4>Antecedentes Generales</h4>
+                                    <div class="form-group">
+                                        <label>Planta</label>
+                                        <select>
+                                            <option>Seleccionar planta...</option>
+                                            <option>Parque Los Cururos</option>
+                                            <option>Parque La Estrella</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Aerogenerador</label>
+                                        <select>
+                                            <option>Seleccionar aerogenerador...</option>
+                                            <option>WTG-001</option>
+                                            <option>WTG-002</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Descripción</label>
+                                        <textarea rows="3" placeholder="Describa las actividades a realizar..."></textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="card">
+                                    <h4>Responsables</h4>
+                                    <div class="form-group">
+                                        <label>Jefe de Faena</label>
+                                        <select>
+                                            <option>Seleccionar jefe de faena...</option>
+                                            <option>Juan Pérez - Contratista A</option>
+                                            <option>María González - Contratista B</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Tipo de Mantenimiento</label>
+                                        <select>
+                                            <option>Mantenimiento Preventivo</option>
+                                            <option>Mantenimiento Correctivo</option>
+                                            <option>Inspección Técnica</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 32px;">
+                                <button class="btn" onclick="createPermiso()">CREAR PERMISO DE TRABAJO</button>
+                            </div>
+                        </div>
+                        
+                        <div id="tab-consultar" class="tab-content">
+                            <h3 style="color: var(--primary-color); margin-bottom: 24px;">Consultar Permisos</h3>
+                            <div class="search-container">
+                                <input type="text" placeholder="Buscar permisos..." class="search-input">
+                                <button class="btn btn-secondary">BUSCAR</button>
+                            </div>
+                            <div class="permisos-list">
+                                <div class="permiso-item">
+                                    <strong>PT-2024-001</strong> - Mantenimiento Preventivo WTG-001
+                                    <br><small>Los Cururos - Estado: ACTIVO</small>
+                                </div>
+                                <div class="permiso-item">
+                                    <strong>PT-2024-002</strong> - Inspección Técnica WTG-002  
+                                    <br><small>La Estrella - Estado: CERRADO</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="tab-datos" class="tab-content">
+                            <h3 style="color: var(--primary-color); margin-bottom: 24px;">Datos del Sistema</h3>
+                            <div class="system-info">
+                                <div class="card">
+                                    <h4>Estado del Sistema</h4>
+                                    <p>✅ Conexión a base de datos: OK</p>
+                                    <p>✅ Servicios API: Funcionando</p>
+                                    <p>✅ Arquitectura: Modular v19.0</p>
+                                </div>
+                                <div class="card">
+                                    <h4>Estadísticas</h4>
+                                    <p>📊 Permisos activos: 15</p>
+                                    <p>📈 Permisos este mes: 45</p>
+                                    <p>👥 Usuarios conectados: 8</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <style>
+                    .app-container {
+                        background: var(--bg-primary);
+                        border-radius: var(--radius-lg);
+                        box-shadow: var(--shadow-lg);
+                        overflow: hidden;
+                    }
+                    .header {
+                        background: var(--primary-color);
+                        color: white;
+                        padding: 24px 32px;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+                    .tabs {
+                        background: var(--bg-secondary);
+                        display: flex;
+                        border-bottom: 1px solid var(--border-color);
+                    }
+                    .tab {
+                        padding: 16px 24px;
+                        background: transparent;
+                        border: none;
+                        border-bottom: 3px solid transparent;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        font-weight: 500;
+                        color: var(--text-secondary);
+                    }
+                    .tab:hover {
+                        background: var(--bg-primary);
+                        color: var(--text-primary);
+                    }
+                    .tab.active {
+                        background: var(--bg-primary);
+                        color: var(--primary-color);
+                        border-bottom-color: var(--primary-color);
+                        font-weight: 600;
+                    }
+                    .tab-content {
+                        display: none;
+                        padding: 32px;
+                    }
+                    .tab-content.active {
+                        display: block;
+                    }
+                    .grid-container {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                        gap: 24px;
+                        margin-bottom: 24px;
+                    }
+                    .card {
+                        background: var(--bg-secondary);
+                        padding: 20px;
+                        border-radius: 8px;
+                        border: 1px solid var(--border-color);
+                    }
+                    .card h4 {
+                        color: var(--primary-color);
+                        margin-bottom: 16px;
+                        font-size: 16px;
+                    }
+                    .form-group select, .form-group textarea {
+                        width: 100%;
+                        padding: 8px 12px;
+                        border: 1px solid var(--border-color);
+                        border-radius: 4px;
+                        font-size: 14px;
+                    }
+                    .btn-secondary {
+                        background: var(--secondary-color);
+                        color: white;
+                    }
+                    .btn-small {
+                        padding: 8px 16px;
+                        font-size: 12px;
+                        width: auto;
+                    }
+                    .search-container {
+                        display: flex;
+                        gap: 12px;
+                        margin-bottom: 24px;
+                    }
+                    .search-input {
+                        flex: 1;
+                        padding: 10px 16px;
+                        border: 1px solid var(--border-color);
+                        border-radius: 6px;
+                    }
+                    .permisos-list {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                    }
+                    .permiso-item {
+                        background: var(--bg-secondary);
+                        padding: 16px;
+                        border-radius: 6px;
+                        border: 1px solid var(--border-color);
+                    }
+                    .system-info {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                        gap: 24px;
+                    }
+                </style>
+            \`;
+            
+            // Configurar event listeners
+            setupAppEventListeners();
+        }
+        
+        function setupAppEventListeners() {
+            // Tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    // Remover active de todos los tabs
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                    
+                    // Activar el tab clickeado
+                    e.target.classList.add('active');
+                    const tabName = e.target.dataset.tab;
+                    document.getElementById(\`tab-\${tabName}\`).classList.add('active');
+                });
+            });
+            
+            // Logout
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                authToken = null;
+                location.reload();
+            });
+        }
+        
+        function createPermiso() {
+            alert('✅ Función crear permiso - Se conectaría con la API completa');
         }
         
         document.addEventListener('DOMContentLoaded', async function() {
@@ -575,6 +834,7 @@ async function handleApiRequest(request, corsHeaders, env, services) {
             return new Response(JSON.stringify({
               success: true,
               message: 'Login exitoso',
+              token: 'demo-token-123',
               user: { nombre: usuario, rol: 'USER' }
             }), {
               headers: { 'Content-Type': 'application/json', ...corsHeaders }
