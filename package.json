@@ -1,0 +1,18 @@
+{
+  "name": "ptwind-modular",
+  "version": "19.0.0",
+  "description": "Sistema de Gestión de Permisos de Trabajo - Arquitectura Modular",
+  "main": "src/worker-new.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "echo \"No tests specified yet\" && exit 0"
+  },
+  "keywords": ["cloudflare-worker", "permisos-trabajo", "modular"],
+  "author": "PT Wind Team",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.88.0"
+  }
+}
