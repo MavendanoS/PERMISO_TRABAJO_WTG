@@ -1,1216 +1,374 @@
-export function getWebAppScript() {
-  return `
-    // ========================================================================
-    // CONFIGURACIÓN Y VARIABLES GLOBALES
-    // ========================================================================
-    
-    console.log('PT Wind v18.0 - D1 Database Edition');
-    
-    const API_BASE = window.location.origin + '/api';
-    let currentUser = null;
-    let authToken = null;
-    let sessionId = null;
-    
-    // Datos cargados
-    let parquesData = [];
-    let personalData = [];
-    let personalByParque = {};
-    let supervisoresData = [];
-    let actividadesData = [];
-    let matrizRiesgosData = [];
-    let aerogeneradoresData = [];
-    let permisosData = [];
-    
-    // Estado del formulario
-    let personalSeleccionado = [];
-    let actividadesSeleccionadas = [];
-    let matrizRiesgosSeleccionada = [];
-    let materialesParaCierre = [];
-    
-    // ========================================================================
-    // FUNCIONES DE SEGURIDAD (sin cambios)
-    // ========================================================================
-    
-    class ClientSecurity {
-      static sanitizeInput(input) {
-        if (typeof input !== 'string') return input;
-        return input
-          .replace(/[<>]/g, '')
-          .replace(/javascript:/gi, '')
-          .replace(/on\w+\s*=/gi, '')
-          .trim();
-      }
-      
-      static encodeHTML(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-      }
-      
-      static async makeSecureRequest(endpoint, options = {}) {
-        const defaultOptions = {
-          headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-          }
-        };
-        
-        if (authToken) {
-          defaultOptions.headers['Authorization'] = 'Bearer ' + authToken;
-        }
-        
-        if (sessionId) {
-          defaultOptions.headers['X-Session-Id'] = sessionId;
-        }
-        
-        try {
-          const response = await fetch(API_BASE + endpoint, {
-            ...defaultOptions,
-            ...options
-          });
-          
-          if (response.status === 401) {
-            handleLogout();
-            throw new Error('Sesión expirada');
-          }
-          
-          const data = await response.json();
-          
-          if (!response.ok) {
-            throw new Error(data.error || 'Error en la solicitud');
-          }
-          
-          return data;
-        } catch (error) {
-          console.error('Request error:', error);
-          throw error;
-        }
-      }
-    }
-    
-    // ========================================================================
-    // INICIALIZACIÓN (sin cambios)
-    // ========================================================================
-    
-    document.addEventListener('DOMContentLoaded', async function() {
-        console.log('Inicializando aplicación...');
-        
-        const storedToken = sessionStorage.getItem('authToken');
-        const storedSessionId = sessionStorage.getItem('sessionId');  // ← AGREGAR
-        if (storedSessionId) sessionId = storedSessionId;  // ← AGREGAR
-        if (storedToken) {
-            authToken = storedToken;
-            await verifyAndLoadApp();
-        } else {
-            showLoginScreen();
-        }
-        
-        setupEventListeners();
-        checkConnectionStatus();
-    });
-    
-    // ========================================================================
-    // MANEJO DE AUTENTICACIÓN (sin cambios)
-    // ========================================================================
-    
-    function setupEventListeners() {
-        // helper seguro para no romper si falta un elemento
-        const on = (id, ev, fn, opts) => { 
-            const el = document.getElementById(id); 
-            if (el) el.addEventListener(ev, fn, opts); 
-        };
-        
-        // Login
-        on('loginForm', 'submit', handleLogin);
-        on('logoutBtn', 'click', handleLogout);
-        
-        // Tabs
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', (e) => switchTab(e.target.dataset.tab));
-        });
-        
-        // Formulario de permiso
-        on('permisoForm', 'submit', handleCreatePermiso);
-        
-        // Selectores
-        on('planta', 'change', handlePlantaChange);
-        on('tipoMantenimiento', 'change', handleTipoMantenimientoChange);
-        
-        // Personal
-        on('addPersonalBtn', 'click', addSelectedPersonal);
-        on('removePersonalBtn', 'click', removeSelectedPersonal);
-        
-        // Botones
-        on('generateRegisterBtn', 'click', generateRegister);
-        on('refreshPermisosBtn', 'click', loadPermisos);
-        on('clearSearchBtn', 'click', clearSearch);
-        const search = document.getElementById('searchPermiso'); 
-        if (search) search.addEventListener('input', filterPermisos);
-        
-        // Modal de cierre
-        on('cancelarCierreBtn', 'click', closeCerrarModal);
-        on('confirmarCierreBtn', 'click', handleConfirmarCierre);
-        on('addMaterialBtn', 'click', addMaterial);
-    }
-    
-    async function handleLogin(e) {
-        e.preventDefault();
-        
-        const usuario = ClientSecurity.sanitizeInput(document.getElementById('usuario').value);
-        const password = document.getElementById('password').value;
-        
-        const loginBtn = document.getElementById('loginBtn');
-        const errorDiv = document.getElementById('loginError');
-        
-        errorDiv.style.display = 'none';
-        loginBtn.disabled = true;
-        loginBtn.textContent = 'Iniciando sesión...';
-        
-        try {
-            const response = await fetch(API_BASE + '/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ usuario, password })
-            });
+export function getWebApp() {
+  return '<!DOCTYPE html>' +
+'<html lang=\"es\">' +
+'<head>' +
+    '<meta charset=\"UTF-8\">' +
+    '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +
+    '<title>PT Wind - Sistema de Gestión de Permisos</title>' +
+    '<link rel=\"manifest\" href=\"data:application/json;base64,eyJuYW1lIjoiUFQgV2luZCAtIFBlcm1pc29zIGRlIFRyYWJham8iLCJzaG9ydF9uYW1lIjoiUFQgV2luZCIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMWExZjJlIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjNhV1IwYUQwaU1USTRJaUJvWldsbmFIUTlJakV5T0NJZ2RtbGxkMEp2ZUQwaU1DQXdJREV5T0NBeU9EZ2lJSGh0Ykc1elBTSm9kSFJ3T2k4dmQzZDNMbmN6TG05eVp5OHlNREF3TDNOMlp5SStQSEpsWTNRZ2VEMGlOQ0lnZVQwaU5DSWdkMmxrZEdnOUlqRXlNQ0lnYUdWcFoyaDBQU0l4TWpBaUlHWnBiR3c5SWlNeFlURm1NbVVpTHo0OEwzTjJaejQ9IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJzaXplcyI6IjEyOHgxMjgifV19\">' +
+    '<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">' +
+    '<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>' +
+    '<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">' +
+    '<style>' + getStyles() + '</style>' +
+'</head>' +
+'<body>' +
+    '<div class=\"container\">' +
+        '<!-- Pantalla de Login -->' +
+        '<div id=\"loginScreen\" class=\"login-container\">' +
+            '<div class=\"logo\">' +
+                '<h1>PT WIND</h1>' +
+                '<p>Sistema de Gestión de Permisos de Trabajo</p>' +
+            '</div>' +
             
-            const result = await response.json();
-            
-            if (result.success) {
-                authToken = result.token;
-                sessionId = result.sessionId;
-                currentUser = result.user;
+            '<form id=\"loginForm\">' +
+                '<div class=\"form-group\">' +
+                    '<label for=\"usuario\">Usuario / Email</label>' +
+                    '<input type=\"text\" id=\"usuario\" required placeholder=\"Ingrese su usuario o email\" autocomplete=\"username\">' +
+                '</div>' +
                 
-                sessionStorage.setItem('authToken', authToken);
-                if (sessionId) {
-                    sessionStorage.setItem('sessionId', sessionId);
-                }
-                if (result.requirePasswordChange) {
-                    showChangePasswordModal();
-                } else {
-                    await loadAppData();
-                    showApp();
-                }
-            } else {
-                showLoginError(result.message || 'Error al iniciar sesión');
-            }
-        } catch (error) {
-            showLoginError('Error de conexión: ' + error.message);
-        } finally {
-            loginBtn.disabled = false;
-            loginBtn.textContent = 'Iniciar Sesión';
-        }
-    }
+                '<div class=\"form-group\">' +
+                    '<label for=\"password\">Contraseña</label>' +
+                    '<input type=\"password\" id=\"password\" required placeholder=\"Ingrese su contraseña\" autocomplete=\"current-password\">' +
+                '</div>' +
+                
+                '<button type=\"submit\" class=\"btn\" id=\"loginBtn\">Iniciar Sesión</button>' +
+                
+                '<div id=\"loginError\" class=\"error\" style=\"display: none; margin-top: 16px;\"></div>' +
+            '</form>' +
+            
+            '<div id=\"connectionStatus\" class=\"status-indicator status-offline\" style=\"margin-top: 24px; text-align: center;\">' +
+                'Verificando conexión...' +
+            '</div>' +
+        '</div>' +
+        
+        '<!-- Aplicación Principal -->' +
+        '<div id=\"appScreen\" class=\"app-container\">' +
+            '<div class=\"header\">' +
+                '<div>' +
+                    '<h1>PT WIND</h1>' +
+                    '<p>Sistema de Gestión de Permisos de Trabajo</p>' +
+                '</div>' +
+                
+                '<div style=\"display: flex; align-items: center; gap: 16px;\">' +
+                    '<span id=\"userDisplay\"></span>' +
+                    '<button id=\"logoutBtn\" class=\"btn btn-secondary btn-small\">CERRAR SESIÓN</button>' +
+                '</div>' +
+            '</div>' +
+            
+            '<div class=\"tabs\">' +
+                '<button class=\"tab active\" data-tab=\"nuevo\">Nuevo Permiso</button>' +
+                '<button class=\"tab\" data-tab=\"consultar\">Consultar Permisos</button>' +
+                '<button class=\"tab\" data-tab=\"matriz\">Matriz de Riesgos</button>' +
+                '<button class=\"tab\" data-tab=\"datos\" id=\"tabDatos\" style=\"display: none;\">Datos del Sistema</button>' +
+            '</div>' +
+            
+            '<!-- Tab: Nuevo Permiso -->' +
+            '<div id=\"tab-nuevo\" class=\"tab-content active\">' +
+                '<form id=\"permisoForm\">' +
+                    '<div class=\"grid-three\">' +
+                        '<!-- Columna 1: Antecedentes Generales -->' +
+                        '<div class=\"card\">' +
+                            '<h3>Antecedentes Generales</h3>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"planta\">Planta *</label>' +
+                                '<select id=\"planta\" required>' +
+                                    '<option value=\"\">Seleccionar planta...</option>' +
+                                '</select>' +
+                            '</div>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"aerogenerador\">Aerogenerador *</label>' +
+                                '<select id=\"aerogenerador\" required>' +
+                                    '<option value=\"\">Seleccionar aerogenerador...</option>' +
+                                '</select>' +
+                            '</div>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"descripcion\">Descripción de Actividades *</label>' +
+                                '<textarea id=\"descripcion\" rows=\"4\" required placeholder=\"Describa las actividades a realizar...\"></textarea>' +
+                            '</div>' +
+                        '</div>' +
+                        
+                        '<!-- Columna 2: Responsables -->' +
+                        '<div class=\"card\">' +
+                            '<h3>Responsables</h3>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"jefeFaena\">Jefe de Faena *</label>' +
+                                '<select id=\"jefeFaena\" required>' +
+                                    '<option value=\"\">Seleccionar jefe de faena...</option>' +
+                                '</select>' +
+                            '</div>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"supervisorParque\">Supervisor de Parque</label>' +
+                                '<select id=\"supervisorParque\">' +
+                                    '<option value=\"\">Seleccionar supervisor de parque...</option>' +
+                                '</select>' +
+                            '</div>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label for=\"tipoMantenimiento\">Tipo de Mantenimiento *</label>' +
+                                '<select id=\"tipoMantenimiento\" required>' +
+                                    '<option value=\"\">Seleccionar tipo...</option>' +
+                                    '<option value=\"PREVENTIVO\">Mantenimiento Preventivo</option>' +
+                                    '<option value=\"CORRECTIVO\">Pequeño Correctivo</option>' +
+                                    '<option value=\"GRAN_CORRECTIVO\">Gran Correctivo</option>' +
+                                    '<option value=\"PREDICTIVO\">Mantenimiento Predictivo</option>' +
+                                    '<option value=\"INSPECCION\">Inspección Técnica</option>' +
+                                    '<option value=\"OTROS\">Otros</option>' +
+                                '</select>' +
+                            '</div>' +
+                            
+                            '<div class=\"form-group input-others\" id=\"tipoOtrosContainer\">' +
+                                '<label for=\"tipoOtros\">Especificar Tipo *</label>' +
+                                '<input type=\"text\" id=\"tipoOtros\" placeholder=\"Especifique el tipo de mantenimiento...\">' +
+                            '</div>' +
+                        '</div>' +
+                        
+                        '<!-- Columna 3: Actividades -->' +
+                        '<div class=\"card\">' +
+                            '<h3>Actividades Rutinarias</h3>' +
+                            
+                            '<div class=\"form-group\">' +
+                                '<label>Seleccione las Actividades</label>' +
+                                '<div id=\"actividadesChecklist\" class=\"checkbox-list\">' +
+                                    '<div class=\"loading\">Cargando actividades...</div>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    
+                    '<!-- Personal Asignado - Fila completa -->' +
+                    '<div class=\"card\" style=\"margin-top: 24px;\">' +
+                        '<h3>Personal Asignado</h3>' +
+                        
+                        '<div class=\"selector-dual\">' +
+                            '<div>' +
+                                '<label style=\"display: block; margin-bottom: 12px; font-weight: 600; color: var(--text-primary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;\">Personal Disponible</label>' +
+                                '<div id=\"personalDisponible\" class=\"selector-list\">' +
+                                    '<div class=\"loading\">Seleccione una planta primero</div>' +
+                                '</div>' +
+                            '</div>' +
+                            
+                            '<div class=\"selector-controls\">' +
+                                '<button type=\"button\" class=\"btn btn-secondary btn-small\" id=\"addPersonalBtn\">→</button>' +
+                                '<button type=\"button\" class=\"btn btn-secondary btn-small\" id=\"removePersonalBtn\">←</button>' +
+                            '</div>' +
+                            
+                            '<div>' +
+                                '<label style=\"display: block; margin-bottom: 12px; font-weight: 600; color: var(--text-primary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;\">Personal Seleccionado</label>' +
+                                '<div id=\"personalSeleccionado\" class=\"selector-list\">' +
+                                    '<div style=\"padding: 20px; text-align: center; color: var(--text-secondary);\">No hay personal seleccionado</div>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    
+                    '<div style=\"margin-top: 32px; display: flex; gap: 16px; flex-wrap: wrap;\">' +
+                        '<button type=\"submit\" class=\"btn\" style=\"flex: 1; min-width: 200px;\">CREAR PERMISO DE TRABAJO</button>' +
+                        '<button type=\"button\" id=\"generateRegisterBtn\" class=\"btn btn-secondary\" style=\"flex: 1; min-width: 200px;\">GENERAR REGISTRO PDF</button>' +
+                    '</div>' +
+                '</form>' +
+            '</div>' +
+            
+            '<!-- Tab: Consultar -->' +
+            '<div id=\"tab-consultar\" class=\"tab-content\">' +
+                '<div style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;\">' +
+                    '<h3 style=\"color: var(--primary-color); font-size: 18px; font-weight: 600;\">Consultar Permisos de Trabajo</h3>' +
+                    '<button id=\"refreshPermisosBtn\" class=\"btn btn-secondary btn-small\">ACTUALIZAR</button>' +
+                '</div>' +
+                '<div class=\"search-box\">' +
+                    '<input type=\"text\" id=\"searchPermiso\" class=\"search-input\" placeholder=\"Buscar por número de permiso, planta, descripción...\">' +
+                    '<button id=\"clearSearchBtn\" class=\"btn btn-secondary btn-small\">LIMPIAR</button>' +
+                '</div>' +
+                '<div id=\"permisosContainer\" class=\"loading\">' +
+                    'Cargando permisos...' +
+                '</div>' +
+            '</div>' +
+            
+            '<!-- Tab: Matriz de Riesgos -->' +
+            '<div id=\"tab-matriz\" class=\"tab-content\">' +
+                '<h3 style=\"color: var(--primary-color); font-size: 18px; font-weight: 600; margin-bottom: 16px;\">Matriz de Riesgos</h3>' +
+                '<p style=\"margin-bottom: 24px; color: var(--text-secondary); font-size: 14px;\">Seleccione actividades en la pestaña \"Nuevo Permiso\" para ver la matriz de riesgos aplicable.</p>' +
+                '<div id=\"matrizContainer\">' +
+                    '<div id=\"matrizTable\" class=\"data-table\" style=\"display: none;\">' +
+                        '<table>' +
+                            '<thead>' +
+                                '<tr>' +
+                                    '<th>Código</th>' +
+                                    '<th>Actividad</th>' +
+                                    '<th>Peligro</th>' +
+                                    '<th>Riesgo</th>' +
+                                    '<th>Medidas Preventivas</th>' +
+                                '</tr>' +
+                            '</thead>' +
+                            '<tbody id=\"matrizTableBody\">' +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+                    '<div id=\"matrizEmptyState\" class=\"loading\">' +
+                        'Seleccione actividades para ver la matriz de riesgos...' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            
+            '<!-- Tab: Datos del Sistema -->' +
+            '<div id=\"tab-datos\" class=\"tab-content\">' +
+                '<div style=\"display: flex; flex-direction: column; gap: 24px;\">' +
+                    '<div class=\"card\">' +
+                        '<h3>Parques Eólicos</h3>' +
+                        '<div id=\"parquesContainer\" class=\"loading\">Cargando parques...</div>' +
+                    '</div>' +
+                    
+                    '<div class=\"card\">' +
+                        '<h3>Personal</h3>' +
+                        '<div id=\"personalContainer\" class=\"loading\">Cargando personal...</div>' +
+                    '</div>' +
+                    
+                    '<div class=\"card\">' +
+                        '<h3>Supervisores</h3>' +
+                        '<div id=\"supervisoresContainer\" class=\"loading\">Cargando supervisores...</div>' +
+                    '</div>' +
+                    
+                    '<div class=\"card\">' +
+                        '<h3>Actividades</h3>' +
+                        '<div id=\"actividadesContainer\" class=\"loading\">Cargando actividades...</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+    '</div>' +
 
-    // Nueva función para mostrar modal de cambio obligatorio
-    function showChangePasswordModal() {
-        document.getElementById('changePasswordModal').style.display = 'flex';
-        document.getElementById('submitPasswordChangeBtn')
-            .addEventListener('click', handleMandatoryPasswordChange, { once: true });
-    }
-    
-    async function handleMandatoryPasswordChange() {
-    const newPassword = document.getElementById('mandatoryNewPassword').value;
-    const confirmPassword = document.getElementById('mandatoryConfirmPassword').value;
-    const errorDiv = document.getElementById('changePasswordError');
-    const submitBtn = document.getElementById('submitPasswordChangeBtn');
-    
-    // Validaciones
-    if (!newPassword || !confirmPassword) {
-        errorDiv.textContent = 'Ambos campos son requeridos';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-        errorDiv.textContent = 'Las contraseñas no coinciden';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    if (newPassword.length < 8) {
-        errorDiv.textContent = 'La contraseña debe tener al menos 8 caracteres';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Cambiando contraseña...';
-    
-    try {
-        const response = await fetch(API_BASE + '/change-password', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + authToken
-            },
-            body: JSON.stringify({ newPassword })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Ocultar modal
-            document.getElementById('changePasswordModal').style.display = 'none';
+    '<!-- MODAL PARA CERRAR PERMISO -->' +
+    '<div id=\"cerrarPermisoModal\" style=\"display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; overflow-y: auto;\">' +
+        '<div style=\"background: white; border-radius: 8px; padding: 32px; max-width: 720px; width: 90%; max-height: 90vh; overflow-y: auto; margin: 20px;\">' +
+            '<h3 style=\"margin-bottom: 24px; color: var(--primary-color); font-size: 20px; font-weight: 600;\">CERRAR PERMISO DE TRABAJO</h3>' +
             
-            // Cargar la aplicación
-            await loadAppData();
-            showApp();
+            '<!-- Información del permiso -->' +
+            '<div style=\"background: var(--bg-secondary); padding: 16px; border-radius: 6px; margin-bottom: 24px; border: 1px solid var(--border-color);\">' +
+                '<p style=\"margin-bottom: 8px;\"><strong>Permiso:</strong> <span id=\"permisoInfoNumero\"></span></p>' +
+                '<p style=\"margin-bottom: 8px;\"><strong>Planta:</strong> <span id=\"permisoInfoPlanta\"></span></p>' +
+                '<p style=\"margin-bottom: 0;\"><strong>Aerogenerador:</strong> <span id=\"permisoInfoAerogenerador\"></span></p>' +
+            '</div>' +
             
-            // Mostrar mensaje de éxito
-            alert('Contraseña actualizada exitosamente');
-        } else {
-            errorDiv.textContent = result.error || 'Error al cambiar la contraseña';
-            errorDiv.style.display = 'block';
-        }
-    } catch (error) {
-        errorDiv.textContent = 'Error de conexión';
-        errorDiv.style.display = 'block';
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Cambiar Contraseña y Continuar';
-    }
-    }
-    async function verifyAndLoadApp() {
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/health');
-            if (response.status === 'OK') {
-                await loadAppData();
-                showApp();
-            } else {
-                handleLogout();
-            }
-        } catch (error) {
-            console.error('Error verificando token:', error);
-            handleLogout();
-        }
-    }
-    
-    function handleLogout() {
-        authToken = null;
-        sessionId = null;
-        currentUser = null;
-        sessionStorage.clear();
-        showLoginScreen();
-    }
-    
-    function showLoginScreen() {
-        document.getElementById('loginScreen').style.display = 'block';
-        document.getElementById('appScreen').style.display = 'none';
-    }
-    
-    function showApp() {
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('appScreen').style.display = 'block';
-        
-        if (currentUser) {
-            document.getElementById('userDisplay').textContent = 
-                ClientSecurity.encodeHTML(currentUser.usuario + ' (' + currentUser.rol + ')');
+            '<!-- Fechas y Tiempos -->' +
+            '<div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;\">' +
+                '<div class=\"form-group\">' +
+                    '<label for=\"fechaInicioTrabajos\">Fecha/Hora Inicio Trabajos</label>' +
+                    '<input type=\"datetime-local\" id=\"fechaInicioTrabajos\">' +
+                '</div>' +
+                '<div class=\"form-group\">' +
+                    '<label for=\"fechaFinTrabajos\">Fecha/Hora Fin Trabajos *</label>' +
+                    '<input type=\"datetime-local\" id=\"fechaFinTrabajos\" required>' +
+                '</div>' +
+            '</div>' +
             
-            if (currentUser.rol === 'ADMIN') {
-                document.getElementById('tabDatos').style.display = 'block';
-            }
-        }
-    }
-    
-    function showLoginError(message) {
-        const errorDiv = document.getElementById('loginError');
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-        
-        setTimeout(() => {
-            errorDiv.style.display = 'none';
-        }, 5000);
-    }
-    
-    // ========================================================================
-    // CARGA DE DATOS - ACTUALIZADO PARA D1
-    // ========================================================================
-    
-    async function loadAppData() {
-        console.log('Cargando datos de la aplicación...');
-        
-        try {
-            const [parques, personal, supervisores, actividades] = await Promise.all([
-                ClientSecurity.makeSecureRequest('/parques'),
-                ClientSecurity.makeSecureRequest('/personal'),
-                ClientSecurity.makeSecureRequest('/supervisores'),
-                ClientSecurity.makeSecureRequest('/actividades')
-            ]);
+            '<div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;\" id=\"turbinaContainer\">' +
+                '<div class=\"form-group\">' +
+                    '<label for=\"fechaParadaTurbina\">Fecha/Hora Parada Turbina</label>' +
+                    '<input type=\"datetime-local\" id=\"fechaParadaTurbina\">' +
+                '</div>' +
+                '<div class=\"form-group\">' +
+                    '<label for=\"fechaPuestaMarcha\">Fecha/Hora Puesta en Marcha</label>' +
+                    '<input type=\"datetime-local\" id=\"fechaPuestaMarcha\">' +
+                '</div>' +
+            '</div>' +
             
-            // Los datos ahora vienen directamente como arrays sin properties
-            parquesData = parques.results || [];
-            personalData = personal.results || [];
-            supervisoresData = supervisores.results || [];
-            actividadesData = actividades.results || [];
-            
-            populateParques();
-            populateSupervisores();
-            populateActividades();
-            
-            await loadPermisos();
-            
-            console.log('Datos cargados exitosamente');
-        } catch (error) {
-            console.error('Error cargando datos:', error);
-            alert('Error al cargar los datos del sistema');
-        }
-    }
-    
-    function populateParques() {
-        const select = document.getElementById('planta');
-        select.innerHTML = '<option value="">Seleccionar planta...</option>';
-        
-        // Filtrar parques según los autorizados del usuario
-        const parquesAutorizados = currentUser?.parques || [];
-        const esEnel = currentUser?.esEnel || false;
-        
-        parquesData.forEach(parque => {
-            // Si es Enel, puede ver todos los parques
-            // Si no, solo los parques autorizados
-            if (esEnel || parquesAutorizados.includes(parque.nombre)) {
-                const option = document.createElement('option');
-                option.value = parque.nombre;
-                option.textContent = parque.nombre;
-                option.dataset.id = parque.id;
-                option.dataset.codigo = parque.codigo || '';
-                select.appendChild(option);
-            }
-        });
-    }
-    
-    function populateSupervisores() {
-        const jefeFaenaSelect = document.getElementById('jefeFaena');
-        const supervisorParqueSelect = document.getElementById('supervisorParque');
-        
-        supervisorParqueSelect.innerHTML = '<option value="">Seleccionar supervisor de parque...</option>';
-        
-        supervisoresData.forEach(supervisor => {
-            const option = document.createElement('option');
-            option.value = supervisor.nombre;
-            option.textContent = supervisor.nombre;
-            option.dataset.id = supervisor.id;
-            option.dataset.cargo = supervisor.cargo || '';
-            
-            supervisorParqueSelect.appendChild(option);
-        });
-    }
-    
-    function populateActividades() {
-        const container = document.getElementById('actividadesChecklist');
-        container.innerHTML = '';
-        
-        actividadesData.forEach(actividad => {
-            const item = document.createElement('div');
-            item.className = 'checkbox-item';
-            item.innerHTML = \`
-                <input type="checkbox" id="act_\${actividad.id}" value="\${actividad.nombre}" 
-                       data-id="\${actividad.id}" data-tipo="\${actividad.tipo || 'RUTINARIA'}">
-                <label for="act_\${actividad.id}">\${actividad.nombre}</label>
-            \`;
-            
-            item.querySelector('input').addEventListener('change', handleActividadChange);
-            container.appendChild(item);
-        });
-    }
-    
-    // ========================================================================
-    // MANEJO DE FORMULARIO - ACTUALIZADO PARA D1
-    // ========================================================================
-    
-    async function handlePlantaChange(e) {
-        const plantaNombre = e.target.value;
-        const plantaId = e.target.selectedOptions[0]?.dataset.id;
-        const codigoParque = e.target.selectedOptions[0]?.dataset.codigo;
-        
-        const jefeFaenaSelect = document.getElementById('jefeFaena');  // ← IMPORTANTE
-        
-        if (!plantaNombre) {
-            document.getElementById('aerogenerador').innerHTML = '<option value="">Seleccionar aerogenerador...</option>';
-            document.getElementById('personalDisponible').innerHTML = '<div class="loading">Seleccione una planta primero</div>';
-            jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';  // ← IMPORTANTE
-            return;
-        }
-        
-        // Cargar aerogeneradores
-        await loadAerogeneradores(plantaNombre);
-        
-        // Cargar personal del parque
-        await loadPersonalByParque(plantaNombre);
-        
-        // ⭐ ESTA ES LA PARTE NUEVA QUE DEBES AGREGAR ⭐
-        // Poblar Jefe de Faena con el personal del parque
-        jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';
-        
-        if (personalByParque[plantaNombre] && personalByParque[plantaNombre].length > 0) {
-            personalByParque[plantaNombre].forEach(persona => {
-                const option = document.createElement('option');
-                option.value = persona.nombre;
-                option.textContent = \`\${persona.nombre} - \${persona.empresa || ''}\`;
-                option.dataset.id = persona.id;
-                option.dataset.empresa = persona.empresa || '';
-                option.dataset.rol = persona.rol || '';
-                jefeFaenaSelect.appendChild(option);
-            });
-        } else {
-            // Si no hay personal en el parque, mostrar mensaje
-            const option = document.createElement('option');
-            option.value = "";
-            option.textContent = "No hay personal asignado a este parque";
-            option.disabled = true;
-            jefeFaenaSelect.appendChild(option);
-        }
-    }
-    
-    async function loadAerogeneradores(plantaNombre) {
-        try {
-            const response = await ClientSecurity.makeSecureRequest(\`/aerogeneradores?parque=\${encodeURIComponent(plantaNombre)}\`);
-            aerogeneradoresData = response.results || [];
-            
-            const select = document.getElementById('aerogenerador');
-            select.innerHTML = '<option value="">Seleccionar aerogenerador...</option>';
-            
-            aerogeneradoresData.forEach(aero => {
-                const option = document.createElement('option');
-                option.value = aero.nombre || aero.WTG_Name;
-                option.textContent = aero.nombre || aero.WTG_Name;
-                option.dataset.codigo = aero.codigo || aero.WTG_Name;
-                select.appendChild(option);
-            });
-        } catch (error) {
-            console.error('Error cargando aerogeneradores:', error);
-        }
-    }
-    
-    async function loadPersonalByParque(plantaNombre) {
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/personal-by-parque?parque=' + encodeURIComponent(plantaNombre));
-            personalByParque[plantaNombre] = response.results || [];
-            
-            const container = document.getElementById('personalDisponible');
-            container.innerHTML = '';
-            
-            if (personalByParque[plantaNombre].length === 0) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay personal asignado a este parque</div>';
-                return;
-            }
-            
-            personalByParque[plantaNombre].forEach(persona => {
-                // Los datos vienen directamente, no en properties
-                const item = document.createElement('div');
-                item.className = 'selector-item';
-                item.innerHTML = \`
-                    <strong>\${persona.nombre}</strong><br>
-                    <small>\${persona.empresa || 'Sin empresa'} - \${persona.rol || 'Sin rol'}</small>
-                \`;
-                item.dataset.id = persona.id;
-                item.dataset.nombre = persona.nombre;
-                item.dataset.empresa = persona.empresa || '';
-                item.dataset.rol = persona.rol || '';
-                item.dataset.rut = persona.rut || '';
+            '<!-- Sección de Materiales -->' +
+            '<div style=\"margin-bottom: 24px; background: var(--bg-secondary); padding: 20px; border-radius: 6px; border: 1px solid var(--border-color);\">' +
+                '<h4 style=\"margin-bottom: 16px; color: var(--primary-color); font-size: 16px; font-weight: 600;\">MATERIALES/REPUESTOS UTILIZADOS</h4>' +
                 
-                item.addEventListener('click', () => togglePersonalSelection(item));
-                container.appendChild(item);
-            });
-        } catch (error) {
-            console.error('Error cargando personal del parque:', error);
-        }
-    }
-    
-    function togglePersonalSelection(item) {
-        item.classList.toggle('selected');
-    }
-    
-    function addSelectedPersonal() {
-        const disponibleContainer = document.getElementById('personalDisponible');
-        const seleccionadoContainer = document.getElementById('personalSeleccionado');
-        
-        const selectedItems = disponibleContainer.querySelectorAll('.selected');
-        
-        if (selectedItems.length === 0) {
-            alert('Seleccione al menos una persona');
-            return;
-        }
-        
-        if (personalSeleccionado.length === 0) {
-            seleccionadoContainer.innerHTML = '';
-        }
-        
-        selectedItems.forEach(item => {
-            const persona = {
-                id: item.dataset.id,
-                nombre: item.dataset.nombre,
-                empresa: item.dataset.empresa,
-                rol: item.dataset.rol,
-                rut: item.dataset.rut
-            };
-            
-            if (!personalSeleccionado.find(p => p.id === persona.id)) {
-                personalSeleccionado.push(persona);
+                '<div style=\"display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 12px; margin-bottom: 12px; align-items: end;\">' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialDescripcion\">Descripción</label>' +
+                        '<input type=\"text\" id=\"materialDescripcion\" placeholder=\"Descripción del material\">' +
+                    '</div>' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialCantidad\">Cantidad</label>' +
+                        '<input type=\"number\" id=\"materialCantidad\" min=\"1\" value=\"1\">' +
+                    '</div>' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialPropietario\">Propietario</label>' +
+                        '<select id=\"materialPropietario\">' +
+                            '<option value=\"ENEL\">ENEL</option>' +
+                            '<option value=\"CONTRATISTA\">Contratista</option>' +
+                            '<option value=\"PROVEEDOR\">Proveedor</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialAlmacen\">Almacén</label>' +
+                        '<select id=\"materialAlmacen\">' +
+                            '<option value=\"Central\">Central</option>' +
+                            '<option value=\"Sitio\">Sitio</option>' +
+                            '<option value=\"Móvil\">Móvil</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<button type=\"button\" id=\"addMaterialBtn\" class=\"btn btn-secondary btn-small\">+</button>' +
+                '</div>' +
                 
-                const newItem = item.cloneNode(true);
-                newItem.classList.remove('selected');
-                newItem.addEventListener('click', () => togglePersonalSelection(newItem));
-                seleccionadoContainer.appendChild(newItem);
-            }
-            
-            item.classList.remove('selected');
-            item.style.display = 'none';
-        });
-    }
-    
-    function removeSelectedPersonal() {
-        const seleccionadoContainer = document.getElementById('personalSeleccionado');
-        const disponibleContainer = document.getElementById('personalDisponible');
-        
-        const selectedItems = seleccionadoContainer.querySelectorAll('.selected');
-        
-        if (selectedItems.length === 0) {
-            alert('Seleccione al menos una persona para remover');
-            return;
-        }
-        
-        selectedItems.forEach(item => {
-            const id = item.dataset.id;
-            
-            personalSeleccionado = personalSeleccionado.filter(p => p.id !== id);
-            
-            const originalItem = disponibleContainer.querySelector(\`[data-id="\${id}"]\`);
-            
-            if (originalItem) {
-                originalItem.style.display = 'block';
-            }
-            
-            item.remove();
-        });
-        
-        if (personalSeleccionado.length === 0) {
-            seleccionadoContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay personal seleccionado</div>';
-        }
-    }
-    
-    function handleTipoMantenimientoChange(e) {
-        const tipoOtrosContainer = document.getElementById('tipoOtrosContainer');
-        if (e.target.value === 'OTROS') {
-            tipoOtrosContainer.style.display = 'block';
-            document.getElementById('tipoOtros').required = true;
-        } else {
-            tipoOtrosContainer.style.display = 'none';
-            document.getElementById('tipoOtros').required = false;
-            document.getElementById('tipoOtros').value = '';
-        }
-    }
-    
-    async function handleActividadChange() {
-        actividadesSeleccionadas = [];
-        document.querySelectorAll('#actividadesChecklist input:checked').forEach(checkbox => {
-            actividadesSeleccionadas.push({
-                id: checkbox.dataset.id,
-                nombre: checkbox.value,
-                tipo: checkbox.dataset.tipo
-            });
-        });
-        
-        if (actividadesSeleccionadas.length > 0) {
-            await loadMatrizRiesgos();
-        } else {
-            matrizRiesgosSeleccionada = [];
-            updateMatrizDisplay();
-        }
-    }
-    
-    async function loadMatrizRiesgos() {
-        try {
-            const actividadesNombres = actividadesSeleccionadas.map(a => a.nombre).join(',');
-            const response = await ClientSecurity.makeSecureRequest('/matriz-riesgos?actividades=' + encodeURIComponent(actividadesNombres));
-            
-            // Los datos vienen directamente de D1, no en properties
-            const results = Array.isArray(response?.results) ? response.results : [];
-            matrizRiesgosSeleccionada = results.map(item => ({
-                id: item.id,
-                codigo: item.codigo || 0,
-                actividad: item.actividad || '',
-                peligro: item.peligro || '',
-                riesgo: item.riesgo || '',
-                medidas: item.medidas_preventivas || ''
-            }));
-            
-            updateMatrizDisplay();
-        } catch (error) {
-            console.error('Error cargando matriz de riesgos:', error);
-        }
-    }
-    
-    function updateMatrizDisplay() {
-        const tableBody = document.getElementById('matrizTableBody');
-        const table = document.getElementById('matrizTable');
-        const emptyState = document.getElementById('matrizEmptyState');
-        
-        if (matrizRiesgosSeleccionada.length === 0) {
-            table.style.display = 'none';
-            emptyState.style.display = 'block';
-            return;
-        }
-        
-        table.style.display = 'block';
-        emptyState.style.display = 'none';
-        
-        tableBody.innerHTML = '';
-        matrizRiesgosSeleccionada.forEach(item => {
-            const row = document.createElement('tr');
-            row.innerHTML = \`
-                <td>\${item.codigo}</td>
-                <td>\${item.actividad}</td>
-                <td>\${item.peligro}</td>
-                <td>\${item.riesgo}</td>
-                <td>\${item.medidas}</td>
-            \`;
-            tableBody.appendChild(row);
-        });
-    }
-    
-    // ========================================================================
-    // CREAR PERMISO (sin cambios significativos)
-    // ========================================================================
-    
-    async function handleCreatePermiso(e) {
-        e.preventDefault();
-        
-        // Deshabilitar el botón de submit para evitar múltiples envíos
-        const submitButton = e.target.querySelector('button[type="submit"]');
-        const originalText = submitButton.textContent;
-        submitButton.disabled = true;
-        submitButton.textContent = 'CREANDO PERMISO...';
-        
-        const plantaSelect = document.getElementById('planta');
-        const aerogeneradorSelect = document.getElementById('aerogenerador');
-        const jefeFaenaSelect = document.getElementById('jefeFaena');
-        const supervisorParqueSelect = document.getElementById('supervisorParque');
-        
-        const permisoData = {
-            planta: plantaSelect.value,
-            plantaId: plantaSelect.selectedOptions[0]?.dataset.id,
-            codigoParque: plantaSelect.selectedOptions[0]?.dataset.codigo,
-            aerogenerador: aerogeneradorSelect.value,
-            aerogeneradorCodigo: aerogeneradorSelect.selectedOptions[0]?.dataset.codigo,
-            descripcion: ClientSecurity.sanitizeInput(document.getElementById('descripcion').value),
-            jefeFaena: jefeFaenaSelect.value,
-            jefeFaenaId: jefeFaenaSelect.selectedOptions[0]?.dataset.id,
-            supervisorParque: supervisorParqueSelect.value,
-            supervisorParqueId: supervisorParqueSelect.selectedOptions[0]?.dataset.id,
-            tipoMantenimiento: document.getElementById('tipoMantenimiento').value,
-            tipoMantenimientoOtros: ClientSecurity.sanitizeInput(document.getElementById('tipoOtros').value),
-            personal: personalSeleccionado,
-            actividades: actividadesSeleccionadas,
-            matrizRiesgos: matrizRiesgosSeleccionada,
-            usuarioCreador: currentUser?.email || 'unknown',
-            fechaInicio: new Date().toISOString()
-        };
-        
-        if (!permisoData.planta || !permisoData.descripcion || !permisoData.jefeFaena) {
-            alert('Por favor complete los campos obligatorios');
-            // Re-habilitar el botón si hay error de validación
-            submitButton.disabled = false;
-            submitButton.textContent = originalText;
-            return;
-        }
-        
-        if (personalSeleccionado.length === 0) {
-            alert('Debe seleccionar al menos una persona');
-            // Re-habilitar el botón si hay error de validación
-            submitButton.disabled = false;
-            submitButton.textContent = originalText;
-            return;
-        }
-        
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/permisos', {
-                method: 'POST',
-                body: JSON.stringify(permisoData)
-            });
-            
-            if (response.success) {
-                alert('Permiso creado exitosamente\\n\\nNúmero: ' + response.numeroPT);
+                '<div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;\">' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialNumeroItem\">Número Item (Opcional)</label>' +
+                        '<input type=\"text\" id=\"materialNumeroItem\" placeholder=\"N° Item\">' +
+                    '</div>' +
+                    '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
+                        '<label for=\"materialNumeroSerie\">Número Serie (Opcional)</label>' +
+                        '<input type=\"text\" id=\"materialNumeroSerie\" placeholder=\"N° Serie\">' +
+                    '</div>' +
+                '</div>' +
                 
-                document.getElementById('permisoForm').reset();
-                personalSeleccionado = [];
-                actividadesSeleccionadas = [];
-                matrizRiesgosSeleccionada = [];
-                document.getElementById('personalSeleccionado').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay personal seleccionado</div>';
-                updateMatrizDisplay();
-                
-                await loadPermisos();
-                switchTab('consultar');
-                
-                // Re-habilitar el botón después del éxito
-                submitButton.disabled = false;
-                submitButton.textContent = originalText;
-            } else {
-                alert('Error al crear el permiso: ' + (response.error || 'Error desconocido'));
-                // Re-habilitar el botón si hay error
-                submitButton.disabled = false;
-                submitButton.textContent = originalText;
-            }
-        } catch (error) {
-            console.error('Error creando permiso:', error);
-            alert('Error al crear el permiso: ' + error.message);
-            // Re-habilitar el botón si hay error
-            submitButton.disabled = false;
-            submitButton.textContent = originalText;
-        }
-    }
-    
-    // ========================================================================
-    // CONSULTAR PERMISOS (actualizado para D1)
-    // ========================================================================
-    
-    async function loadPermisos() {
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/permisos');
-            permisosData = response.permisos || [];
-            displayPermisos();
-        } catch (error) {
-            console.error('Error cargando permisos:', error);
-            document.getElementById('permisosContainer').innerHTML = '<div class="error">Error al cargar los permisos</div>';
-        }
-    }
-    
-    function displayPermisos() {
-        const container = document.getElementById('permisosContainer');
-        
-        // Filtrar permisos según plantas autorizadas
-        const parquesAutorizados = currentUser?.parques || [];
-        const esEnel = currentUser?.esEnel || false;
-        
-        const permisosFiltrados = permisosData.filter(permiso => {
-            // Si es Enel, puede ver todos los permisos
-            // Si no, solo los de sus parques autorizados
-            return esEnel || parquesAutorizados.includes(permiso.planta_nombre);
-        });
-        
-        if (permisosFiltrados.length === 0) {
-            container.innerHTML = '<div class="loading">No hay permisos registrados para sus plantas autorizadas</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-        permisosFiltrados.forEach(permiso => {
-            const card = createPermisoCard(permiso);
-            container.appendChild(card);
-        });
-    }
-    
-    function createPermisoCard(permiso) {
-        const card = document.createElement('div');
-        card.className = 'permiso-card';
-        
-        const estadoClass = 'estado-' + (permiso.estado || 'CREADO').toLowerCase();
-        const esEnel = currentUser?.esEnel || currentUser?.rol === 'Supervisor Enel';
-        
-        // Verificar si el usuario puede cerrar el permiso
-        // Ahora todos los IDs son de la misma tabla usuarios
-        const userId = currentUser?.id ? currentUser.id.toString() : null;
-        const jefeFaenaId = permiso.jefe_faena_id ? permiso.jefe_faena_id.toString() : null;
-        const personalIds = permiso.personal_ids ? 
-            permiso.personal_ids.split(',').map(id => id.trim()) : [];
-        
-        const esJefeFaena = userId && userId === jefeFaenaId;
-        const estaEnPersonalAsignado = userId && personalIds.includes(userId);
-        
-        const puedeCerrarPermiso = esEnel || esJefeFaena || estaEnPersonalAsignado;
-        
-        card.innerHTML = \`
-            <div class="permiso-header">
-                <div class="permiso-numero">\${permiso.numero_pt}</div>
-                <div class="permiso-estado \${estadoClass}">\${permiso.estado}</div>
-            </div>
+                '<div id=\"materialesLista\" style=\"max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; background: white;\">' +
+                    '<div style=\"padding: 20px; text-align: center; color: var(--text-secondary);\">No hay materiales agregados</div>' +
+                '</div>' +
+            '</div>' +
             
-            <div class="permiso-info">
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Planta</div>
-                    <div class="permiso-info-value">\${permiso.planta_nombre}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Aerogenerador</div>
-                    <div class="permiso-info-value">\${permiso.aerogenerador_nombre || 'N/A'}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Jefe de Faena</div>
-                    <div class="permiso-info-value">\${permiso.jefe_faena_nombre}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Fecha Creación</div>
-                    <div class="permiso-info-value">\${formatDate(permiso.fecha_creacion)}</div>
-                </div>
-            </div>
+            '<!-- Observaciones de Cierre -->' +
+            '<div class=\"form-group\" style=\"margin-bottom: 24px;\">' +
+                '<label for=\"observacionesCierre\">Observaciones de Cierre</label>' +
+                '<textarea id=\"observacionesCierre\" rows=\"3\" placeholder=\"Observaciones sobre el cierre del permiso...\">Trabajo completado según programación</textarea>' +
+            '</div>' +
             
-            <div class="permiso-info">
-                <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                    <div class="permiso-info-label">Descripción</div>
-                    <div class="permiso-info-value">\${permiso.descripcion}</div>
-                </div>
-            </div>
+            '<div style=\"display: flex; gap: 12px; justify-content: flex-end;\">' +
+                '<button id=\"cancelarCierreBtn\" class=\"btn btn-secondary btn-small\">CANCELAR</button>' +
+                '<button id=\"confirmarCierreBtn\" class=\"btn btn-danger btn-small\">CERRAR PERMISO</button>' +
+            '</div>' +
+        '</div>' +
+    '</div>' +
+
+    '<!-- MODAL DE CAMBIO DE CONTRAEÑA OBLIGATORIO -->' +
+    '<div id="changePasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">' +
+        '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 480px; width: 90%; margin: 20px;">' +
+            '<h3 style="margin-bottom: 24px; color: var(--primary-color);">Cambio de Contraseña Obligatorio</h3>' +
             
-            \${permiso.personal_asignado ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Personal Asignado</div>
-                        <div class="permiso-info-value">\${permiso.personal_asignado}</div>
-                    </div>
-                </div>
-            \` : ''}
+            '<div class="warning" style="background: rgba(243, 156, 18, 0.1); color: var(--warning-color); padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(243, 156, 18, 0.2);">' +
+                '<strong>⚠️ Primera vez ingresando</strong><br>' +
+                'Por seguridad, debes cambiar tu contraseña temporal.' +
+            '</div>' +
             
-            <div class="permiso-actions">
-                \${permiso.estado === 'CREADO' && esEnel ? 
-                    \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
-                
-                \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
-                    \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
-                
-                \${permiso.estado === 'CERRADO' ? 
-                    \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : ''}
-            </div>
-        \`;
-        
-        return card;
-    }
-    
-    function filterPermisos() {
-        const searchTerm = document.getElementById('searchPermiso').value.toLowerCase();
-        const txt = v => String(v ?? '').toLowerCase();
-        
-        if (!searchTerm) {
-            displayPermisos();
-            return;
-        }
-        
-        // Filtrar primero por parques autorizados
-        const parquesAutorizados = currentUser?.parques || [];
-        const esEnel = currentUser?.esEnel || false;
-        
-        const permisosAutorizados = permisosData.filter(permiso => {
-            return esEnel || parquesAutorizados.includes(permiso.planta_nombre);
-        });
-        
-        // Luego filtrar por término de búsqueda
-        const filtered = permisosAutorizados.filter(p =>
-            txt(p.numero_pt).includes(searchTerm) ||
-            txt(p.planta_nombre).includes(searchTerm) ||
-            txt(p.descripcion).includes(searchTerm) ||
-            txt(p.jefe_faena_nombre).includes(searchTerm)
-        );
-        
-        const container = document.getElementById('permisosContainer');
-        if (filtered.length === 0) {
-            container.innerHTML = '<div class="loading">No se encontraron permisos con ese criterio</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-        filtered.forEach(permiso => {
-            const card = createPermisoCard(permiso);
-            container.appendChild(card);
-        });
-    }
-    
-    function clearSearch() {
-        document.getElementById('searchPermiso').value = '';
-        displayPermisos();
-    }
-    
-    // ========================================================================
-    // APROBAR Y CERRAR PERMISOS
-    // ========================================================================
-    
-    window.aprobarPermiso = async function(permisoId) {
-        if (!confirm('¿Está seguro de aprobar este permiso?')) return;
-        
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/aprobar-permiso', {
-                method: 'POST',
-                body: JSON.stringify({
-                    permisoId: permisoId,
-                    usuarioAprobador: currentUser?.email || 'unknown'
-                })
-            });
+            '<div class="form-group">' +
+                '<label for="mandatoryNewPassword">Nueva Contraseña</label>' +
+                '<input type="password" id="mandatoryNewPassword" required placeholder="Mínimo 8 caracteres">' +
+            '</div>' +
             
-            if (response.success) {
-                alert('Permiso aprobado exitosamente');
-                await loadPermisos();
-            } else {
-                alert('Error al aprobar el permiso: ' + (response.error || 'Error desconocido'));
-            }
-        } catch (error) {
-            console.error('Error aprobando permiso:', error);
-            alert('Error al aprobar el permiso');
-        }
-    };
-    
-    window.openCerrarModal = function(permisoId, numeroPT, planta, aerogenerador) {
-        document.getElementById('permisoInfoNumero').textContent = numeroPT;
-        document.getElementById('permisoInfoPlanta').textContent = planta;
-        document.getElementById('permisoInfoAerogenerador').textContent = aerogenerador;
-        
-        document.getElementById('fechaInicioTrabajos').value = '';
-        document.getElementById('fechaFinTrabajos').value = '';
-        document.getElementById('fechaParadaTurbina').value = '';
-        document.getElementById('fechaPuestaMarcha').value = '';
-        document.getElementById('observacionesCierre').value = 'Trabajo completado según programación';
-        materialesParaCierre = [];
-        updateMaterialesList();
-        
-        document.getElementById('confirmarCierreBtn').dataset.permisoId = permisoId;
-        document.getElementById('cerrarPermisoModal').style.display = 'flex';
-    };
-    
-    function closeCerrarModal() {
-        document.getElementById('cerrarPermisoModal').style.display = 'none';
-    }
-    
-    function addMaterial() {
-        const descripcion = ClientSecurity.sanitizeInput(document.getElementById('materialDescripcion').value);
-        const cantidad = parseInt(document.getElementById('materialCantidad').value) || 1;
-        const propietario = document.getElementById('materialPropietario').value;
-        const almacen = document.getElementById('materialAlmacen').value;
-        const numeroItem = ClientSecurity.sanitizeInput(document.getElementById('materialNumeroItem').value);
-        const numeroSerie = ClientSecurity.sanitizeInput(document.getElementById('materialNumeroSerie').value);
-        
-        if (!descripcion) {
-            alert('Ingrese la descripción del material');
-            return;
-        }
-        
-        materialesParaCierre.push({
-            descripcion,
-            cantidad,
-            propietario,
-            almacen,
-            numeroItem,
-            numeroSerie
-        });
-        
-        document.getElementById('materialDescripcion').value = '';
-        document.getElementById('materialCantidad').value = '1';
-        document.getElementById('materialNumeroItem').value = '';
-        document.getElementById('materialNumeroSerie').value = '';
-        
-        updateMaterialesList();
-    }
-    
-    function updateMaterialesList() {
-        const container = document.getElementById('materialesLista');
-        
-        if (materialesParaCierre.length === 0) {
-            container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay materiales agregados</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-        materialesParaCierre.forEach((material, index) => {
-            const item = document.createElement('div');
-            item.style.cssText = 'padding: 12px; border-bottom: 1px solid var(--border-color);';
-            item.innerHTML = \`
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>\${material.descripcion}</strong><br>
-                        <small>Cantidad: \${material.cantidad} | Propietario: \${material.propietario} | Almacén: \${material.almacen}</small>
-                        \${material.numeroItem ? \`<br><small>Item: \${material.numeroItem}</small>\` : ''}
-                        \${material.numeroSerie ? \`<br><small>Serie: \${material.numeroSerie}</small>\` : ''}
-                    </div>
-                    <button onclick="removeMaterial(\${index})" class="btn btn-danger btn-small">X</button>
-                </div>
-            \`;
-            container.appendChild(item);
-        });
-    }
-    
-    window.removeMaterial = function(index) {
-        materialesParaCierre.splice(index, 1);
-        updateMaterialesList();
-    };
-    
-    async function handleConfirmarCierre() {
-        const permisoId = parseInt(document.getElementById('confirmarCierreBtn').dataset.permisoId);
-        const fechaFinTrabajos = document.getElementById('fechaFinTrabajos').value;
-        
-        if (!fechaFinTrabajos) {
-            alert('La fecha de fin de trabajos es obligatoria');
-            return;
-        }
-        
-        if (!confirm('¿Está seguro de cerrar este permiso?')) return;
-        
-        const cierreData = {
-            permisoId: permisoId,
-            usuarioCierre: currentUser?.email || 'unknown',
-            fechaInicioTrabajos: document.getElementById('fechaInicioTrabajos').value,
-            fechaFinTrabajos: fechaFinTrabajos,
-            fechaParadaTurbina: document.getElementById('fechaParadaTurbina').value,
-            fechaPuestaMarcha: document.getElementById('fechaPuestaMarcha').value,
-            observacionesCierre: ClientSecurity.sanitizeInput(document.getElementById('observacionesCierre').value),
-            materiales: materialesParaCierre
-        };
-        
-        try {
-            const response = await ClientSecurity.makeSecureRequest('/cerrar-permiso', {
-                method: 'POST',
-                body: JSON.stringify(cierreData)
-            });
+            '<div class="form-group">' +
+                '<label for="mandatoryConfirmPassword">Confirmar Nueva Contraseña</label>' +
+                '<input type="password" id="mandatoryConfirmPassword" required placeholder="Repite la contraseña">' +
+            '</div>' +
             
-            if (response.success) {
-                alert('Permiso cerrado exitosamente');
-                closeCerrarModal();
-                await loadPermisos();
-            } else {
-                alert('Error al cerrar el permiso: ' + (response.error || 'Error desconocido'));
-            }
-        } catch (error) {
-            console.error('Error cerrando permiso:', error);
-            alert('Error al cerrar el permiso');
-        }
-    }
-    
-    // ========================================================================
-    // GENERAR REGISTRO PDF (sin cambios)
-    // ========================================================================
-    
-    async function generateRegister() {
-        const plantaSelect = document.getElementById('planta');
-        const aerogeneradorSelect = document.getElementById('aerogenerador');
-        const jefeFaenaSelect = document.getElementById('jefeFaena');
-        
-        const data = {
-            planta: plantaSelect.value,
-            aerogenerador: aerogeneradorSelect.value,
-            descripcion: document.getElementById('descripcion').value,
-            jefeFaena: jefeFaenaSelect.value,
-            tipoMantenimiento: document.getElementById('tipoMantenimiento').value,
-            tipoMantenimientoOtros: document.getElementById('tipoOtros').value,
-            personal: personalSeleccionado,
-            actividadesRutinarias: actividadesSeleccionadas.filter(a => a.tipo === 'RUTINARIA').map(a => a.nombre)
-        };
-        
-        if (!data.planta || !data.descripcion || !data.jefeFaena) {
-            alert('Complete los campos obligatorios antes de generar el registro');
-            return;
-        }
-        
-        try {
-            const response = await fetch(API_BASE + '/generate-register', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': authToken ? 'Bearer ' + authToken : ''
-                },
-                body: JSON.stringify(data)
-            });
+            '<div id="changePasswordError" class="error" style="display: none; margin-bottom: 16px;"></div>' +
             
-            if (response.ok) {
-                const html = await response.text();
-                const newWindow = window.open('', '_blank');
-                newWindow.document.write(html);
-                newWindow.document.close();
-            } else {
-                alert('Error al generar el registro');
-            }
-        } catch (error) {
-            console.error('Error generando registro:', error);
-            alert('Error al generar el registro');
-        }
-    }
-    
-    // ========================================================================
-    // FUNCIONES AUXILIARES
-    // ========================================================================
-    
-    function switchTab(tabName) {
-        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        
-        document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
-        document.getElementById('tab-' + tabName).classList.add('active');
-        
-        if (tabName === 'datos' && currentUser?.rol === 'ADMIN') {
-            loadDatosTab();
-        }
-    }
-    
-    async function loadDatosTab() {
-        const parquesContainer = document.getElementById('parquesContainer');
-        parquesContainer.innerHTML = \`<p>Total: \${parquesData.length} parques</p>\`;
-        parquesData.forEach(parque => {
-            parquesContainer.innerHTML += \`<div>• \${parque.nombre}</div>\`;
-        });
-        
-        const personalContainer = document.getElementById('personalContainer');
-        personalContainer.innerHTML = \`<p>Total: \${personalData.length} personas</p>\`;
-        
-        const supervisoresContainer = document.getElementById('supervisoresContainer');
-        supervisoresContainer.innerHTML = \`<p>Total: \${supervisoresData.length} supervisores</p>\`;
-        
-        const actividadesContainer = document.getElementById('actividadesContainer');
-        actividadesContainer.innerHTML = \`<p>Total: \${actividadesData.length} actividades</p>\`;
-    }
-    
-    function formatDate(dateString) {
-        if (!dateString) return 'N/A';
-        
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('es-CL', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch (error) {
-            return 'Fecha inválida';
-        }
-    }
-    
-    async function checkConnectionStatus() {
-        const statusDiv = document.getElementById('connectionStatus');
-        
-        try {
-            const response = await fetch(API_BASE + '/health');
-            const data = await response.json();
+            '<button id="submitPasswordChangeBtn" class="btn" style="width: 100%;">Cambiar Contraseña y Continuar</button>' +
             
-            if (data.status === 'OK') {
-                statusDiv.textContent = 'Sistema conectado y operativo';
-                statusDiv.className = 'status-indicator status-online';
-            } else {
-                statusDiv.textContent = 'Sistema con problemas de conexión';
-                statusDiv.className = 'status-indicator status-offline';
-            }
-        } catch (error) {
-            statusDiv.textContent = 'Sin conexión al servidor';
-            statusDiv.className = 'status-indicator status-offline';
-        }
-    }
-    
-    // ========================================================================
-    // AUTO-LOGOUT POR INACTIVIDAD
-    // ========================================================================
-    
-    let inactivityTimer;
-    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos
-    
-    function resetInactivityTimer() {
-        clearTimeout(inactivityTimer);
-        inactivityTimer = setTimeout(() => {
-            alert('Su sesión ha expirado por inactividad');
-            handleLogout();
-        }, INACTIVITY_TIMEOUT);
-    }
-    
-    ['mousedown', 'keypress', 'scroll', 'touchstart'].forEach(event => {
-        document.addEventListener(event, resetInactivityTimer);
-    });
-    
-    resetInactivityTimer();
-    
-    console.log('Sistema de seguridad activo - D1 Database Edition');
-  `;
+            '<p style="margin-top: 16px; font-size: 12px; color: var(--text-secondary); text-align: center;">' +
+                'No podrás acceder al sistema hasta cambiar tu contraseña' +
+            '</p>' +
+    '</div>' +
+  '</div>' +
+  '<script>' + getWebAppScript() + '</script>' +
+'</body>' +
+'</html>';
 }
 
 export default getWebApp;
