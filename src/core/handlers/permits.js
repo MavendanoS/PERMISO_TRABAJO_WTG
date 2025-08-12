@@ -1,6 +1,7 @@
 import AuditLogger from '../services/auditLogger.js';
 import { getLocalDateTime, formatLocalDateTime } from '../utils/time.js';
 import { InputSanitizer } from '../utils/sanitizers.js';
+import generateTomaConocimientoPDF from './pdf.js';
 
 export async function handlePermisos(request, corsHeaders, env, currentUser, services) {
   const { auditLogger } = services;
