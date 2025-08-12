@@ -9,7 +9,19 @@
  */
 export function getSecurityHeaders() {
   return {
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",          // ← permite íconos base64 en manifest
+      "manifest-src 'self' data:",     // ← permite manifest por data: URL
+      "connect-src 'self'",            // ← fetch/XHR a tu mismo worker
+      // Opcionales si usas estos recursos:
+      // "font-src 'self' data:",
+      // "worker-src 'self' blob:",
+      // "base-uri 'self'",
+      // "frame-ancestors 'none'"
+    ].join("; "),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "X-XSS-Protection": "1; mode=block",

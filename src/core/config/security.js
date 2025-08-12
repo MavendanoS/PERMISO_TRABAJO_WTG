@@ -7,7 +7,7 @@
 
 export const SECURITY_CONFIG = {
   rateLimits: {
-    login: { windowMs: 900000, max: 5, blockDuration: 3600 },
+    login: { windowMs: 900000, max: 1000, blockDuration: 3600 },
     api: { windowMs: 60000, max: 100 },
     heavy: { windowMs: 300000, max: 10 }
   },

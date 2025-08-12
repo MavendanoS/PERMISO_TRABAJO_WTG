@@ -1,6 +1,7 @@
 import { InputSanitizer } from '../utils/sanitizers.js';
 import AuthService from '../services/authService.js';
 import AuditLogger from '../services/auditLogger.js';
+import { getLocalDateTime } from '../utils/time.js';
 
 export async function handleLogin(request, corsHeaders, env, services) {
   const { rateLimiter, authService, auditLogger } = services;
@@ -131,7 +132,7 @@ export async function handleLogin(request, corsHeaders, env, services) {
     };
     
     // Generar JWT
-    const token = await authService.generateToken(userData);
+    const token = await authService.createToken(userData);
     
     // AQUÍ VA: Verificar si la contraseña es temporal
     const esPasswordTemporal = userResult.password_temporal === 1;

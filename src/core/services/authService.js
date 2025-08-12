@@ -1,14 +1,17 @@
+// src/core/services/authService.js
 /**
- * Authentication and hashing service for user passwords and JWT management.
- * Compatible with:
- *  - pbkdf2:<iterations>:<saltHex>:<hashHex>
- *  - legacy "salt:hash" (uses SECURITY_CONFIG iterations)
- *  - legacy plaintext (stored as-is)
+ * Auth + hashing + JWT
+ * Formatos soportados en verifyPassword():
+ *  - pbkdf2:<iteraciones>:<saltHex>:<hashHex>
+ *  - salt:hash (legacy PBKDF2 usando SECURITY_CONFIG.iterations)
+ *  - base64(SHA-256(password))  (legacy)
+ *  - HEX (64 = SHA-256, 40 = SHA-1) (legacy)
+ *  - texto plano (igualdad directa)  (legacy)
  */
 import SECURITY_CONFIG from '../config/security.js';
-import SecurityError from '../errors.js'; // default import
+import SecurityError from '../errors.js';
 
-// --- helpers --------------------------------------------------------------
+const enc = new TextEncoder();
 
 const toHex = (buf) =>
   [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -23,136 +26,145 @@ const timingSafeEqual = (a, b) => {
   return r === 0;
 };
 
-const b64url = (str) => str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const isHex = (s) => /^[a-f0-9]+$/i.test(s);
+const isBase64 = (s) => /^[A-Za-z0-9+/]+={0,2}$/.test(s) && s.length % 4 === 0;
 
-// -------------------------------------------------------------------------
+const b64url = (s) => s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 export default class AuthService {
   constructor(env) {
     this.env = env;
-    // Si no hay secreto, se usa uno aleatorio (como en tu worker original)
     this.SECRET = env.JWT_SECRET || crypto.randomUUID();
   }
 
-  /**
-   * Genera hash PBKDF2 con salt aleatorio.
-   * Devuelve: "pbkdf2:<iter>:<saltHex>:<hashHex>"
-   */
   async hashPassword(password) {
-    const enc = new TextEncoder();
-
-    const iterations = SECURITY_CONFIG.crypto.iterations;    // p.ej. 100000
-    const hashLen    = SECURITY_CONFIG.crypto.hashLength;    // bytes, p.ej. 32
-    const saltLen    = SECURITY_CONFIG.crypto.saltLength;    // bytes
+    const iterations = SECURITY_CONFIG.crypto.iterations; // p.ej. 100000
+    const hashLen    = SECURITY_CONFIG.crypto.hashLength; // bytes, p.ej. 32
+    const saltLen    = SECURITY_CONFIG.crypto.saltLength; // bytes
 
     const salt = crypto.getRandomValues(new Uint8Array(saltLen));
-
     const key = await crypto.subtle.importKey('raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
       { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
       key,
       hashLen * 8
     );
-
-    const hashHex = toHex(bits);
-    const saltHex = toHex(salt);
-    return `pbkdf2:${iterations}:${saltHex}:${hashHex}`;
+    return `pbkdf2:${iterations}:${toHex(salt)}:${toHex(bits)}`;
   }
 
   /**
-   * Verifica password contra formatos soportados:
-   * 1) pbkdf2:<iter>:<saltHex>:<hashHex>
-   * 2) legacy "salt:hash" (usa iteraciones del SECURITY_CONFIG)
-   * 3) legacy plaintext (igualdad directa)
+   * Verifica password contra múltiples formatos legacy.
+   * Retorna objeto con { valid: boolean, needsUpdate: boolean }
    */
   async verifyPassword(plain, stored) {
-    if (!plain || stored == null) return false;
+    if (plain == null || stored == null) return { valid: false, needsUpdate: false };
 
-    // 3) Legacy: texto plano (no contiene ':', no es hex fijo)
-    if (!stored.includes(':')) {
-      return plain === stored;
-    }
+    let valid = false;
+    let needsUpdate = false;
 
-    const parts = stored.split(':');
-
-    // 1) PBKDF2 con prefijo
-    if (parts[0] === 'pbkdf2') {
-      // admite pbkdf2:100000:<salt>:<hash> o pbkdf2:sha256:100000:<salt>:<hash>
+    // 1) pbkdf2:<iter>:<saltHex>:<hashHex>  (formato actual, no necesita update)
+    if (stored.startsWith('pbkdf2:')) {
+      const parts = stored.split(':');
       let iterations = SECURITY_CONFIG.crypto.iterations;
       let saltHex, hashHex;
-
       for (let i = 1; i < parts.length; i++) {
         if (/^\d+$/.test(parts[i])) { iterations = parseInt(parts[i], 10); continue; }
         if (!saltHex) { saltHex = parts[i]; continue; }
         if (!hashHex) { hashHex = parts[i]; break; }
       }
-      if (!saltHex || !hashHex) return false;
+      if (!saltHex || !hashHex || !isHex(saltHex) || !isHex(hashHex)) {
+        return { valid: false, needsUpdate: false };
+      }
 
-      const salt = fromHex(saltHex);
-      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(plain), { name: 'PBKDF2' }, false, ['deriveBits']);
+      const key = await crypto.subtle.importKey('raw', enc.encode(plain), { name: 'PBKDF2' }, false, ['deriveBits']);
       const bits = await crypto.subtle.deriveBits(
-        { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
-        key,
-        hashHex.length * 4 // longitud hex * 4 = bits
-      );
-      const derivedHex = toHex(bits).toLowerCase();
-      return timingSafeEqual(derivedHex, hashHex.toLowerCase());
-    }
-
-    // 2) Legacy "salt:hash" (sin prefijo)
-    if (parts.length === 2) {
-      const [saltHex, hashHex] = parts;
-      const salt = fromHex(saltHex);
-      const iterations = SECURITY_CONFIG.crypto.iterations;
-
-      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(plain), { name: 'PBKDF2' }, false, ['deriveBits']);
-      const bits = await crypto.subtle.deriveBits(
-        { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+        { name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(saltHex), iterations },
         key,
         hashHex.length * 4
       );
-      const derivedHex = toHex(bits).toLowerCase();
-      return timingSafeEqual(derivedHex, (hashHex || '').toLowerCase());
+      valid = timingSafeEqual(toHex(bits).toLowerCase(), hashHex.toLowerCase());
+      needsUpdate = false; // formato actual, no necesita actualización
+      return { valid, needsUpdate };
     }
 
-    // Formato desconocido
-    return false;
+    // 2) salt:hash  (legacy PBKDF2 con iteraciones de SECURITY_CONFIG)
+    if (stored.includes(':')) {
+      const [saltHex, hashHex] = stored.split(':');
+      if (isHex(saltHex) && isHex(hashHex)) {
+        const iterations = SECURITY_CONFIG.crypto.iterations;
+        const key = await crypto.subtle.importKey('raw', enc.encode(plain), { name: 'PBKDF2' }, false, ['deriveBits']);
+        const bits = await crypto.subtle.deriveBits(
+          { name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(saltHex), iterations },
+          key,
+          hashHex.length * 4
+        );
+        valid = timingSafeEqual(toHex(bits).toLowerCase(), hashHex.toLowerCase());
+        needsUpdate = valid; // formato legacy, necesita actualización
+        return { valid, needsUpdate };
+      }
+      // si no es hex, cae a otros formatos abajo
+    }
+
+    // 3) HEX legacy: 64 => SHA-256, 40 => SHA-1
+    if (isHex(stored) && (stored.length === 64 || stored.length === 40)) {
+      const algo = stored.length === 64 ? 'SHA-256' : 'SHA-1';
+      const digest = await crypto.subtle.digest(algo, enc.encode(plain));
+      valid = timingSafeEqual(toHex(digest).toLowerCase(), stored.toLowerCase());
+      needsUpdate = valid; // formato legacy, necesita actualización
+      return { valid, needsUpdate };
+    }
+
+    // 4) base64(SHA-256(password))
+    if (isBase64(stored)) {
+      const digest = await crypto.subtle.digest('SHA-256', enc.encode(plain));
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+      valid = timingSafeEqual(b64, stored);
+      needsUpdate = valid; // formato legacy, necesita actualización
+      return { valid, needsUpdate };
+    }
+
+    // 5) texto plano (último recurso legacy)
+    valid = plain === stored;
+    needsUpdate = valid; // formato legacy inseguro, necesita actualización urgente
+    return { valid, needsUpdate };
   }
 
   // -------------------------- JWT ----------------------------------------
 
   async createToken(payload) {
-    const header = { alg: 'HS256', typ: 'JWT' };
-    const enc = new TextEncoder();
-
-    const headerB64 = b64url(btoa(String.fromCharCode(...enc.encode(JSON.stringify(header)))));
-    const payloadB64 = b64url(btoa(String.fromCharCode(...enc.encode(JSON.stringify(payload)))));
-
+    // Asegurar que el payload tenga el campo 'sub' para compatibilidad con verifyToken
+    const tokenPayload = {
+      ...payload,
+      sub: payload.id || payload.sub,  // Usar 'id' como 'sub' si no existe
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // Expira en 24 horas
+    };
+    
+    const headerB64 = b64url(btoa(String.fromCharCode(...enc.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))));
+    const payloadB64 = b64url(btoa(String.fromCharCode(...enc.encode(JSON.stringify(tokenPayload)))));
     const unsigned = `${headerB64}.${payloadB64}`;
+
     const key = await crypto.subtle.importKey('raw', enc.encode(this.SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(unsigned));
     const signature = b64url(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
-
     return `${unsigned}.${signature}`;
   }
 
   async verifyToken(token) {
-    const [headerB64, payloadB64, signature] = token.split('.');
-    if (!headerB64 || !payloadB64 || !signature) throw new SecurityError('Token inválido', 401);
+    const [h, p, s] = token.split('.');
+    if (!h || !p || !s) throw new SecurityError('Token inválido', 401);
 
-    const unsigned = `${headerB64}.${payloadB64}`;
-    const enc = new TextEncoder();
+    const unsigned = `${h}.${p}`;
     const key = await crypto.subtle.importKey('raw', enc.encode(this.SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(unsigned));
-    const expectedSig = b64url(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
-    if (signature !== expectedSig) throw new SecurityError('Token inválido', 401);
+    const expected = b64url(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
+    if (s !== expected) throw new SecurityError('Token inválido', 401);
 
-    const payloadJson = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
-    return payloadJson;
+    return JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')));
   }
 
   decodeToken(token) {
-    const [, payloadB64] = token.split('.');
-    return JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+    const [, p] = token.split('.');
+    return JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')));
   }
 }
