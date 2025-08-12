@@ -62,30 +62,59 @@ export async function handlePersonalByParque(request, corsHeaders, env) {
     const url = new URL(request.url);
     const parqueNombre = InputSanitizer.sanitizeString(url.searchParams.get('parque'));
     
-    // Ahora busca en tabla usuarios unificada
+    // Primero obtenemos todos los usuarios activos
     let query = `SELECT id, usuario as nombre, email, empresa, 
                         cargo as rol, rut, telefono, parques_autorizados
                  FROM usuarios 
                  WHERE estado = 'Activo'
-                 AND rol != 'Admin'`;
-    let params = [];
+                 AND rol != 'Admin'
+                 ORDER BY usuario ASC`;
     
-    if (parqueNombre) {
-      query += ` AND parques_autorizados LIKE ?`;
-      params.push(`%${parqueNombre}%`);
+    const result = await env.DB_MASTER.prepare(query).all();
+    
+    // Si hay un parque específico, filtramos en JavaScript
+    let filteredResults = result.results || [];
+    
+    if (parqueNombre && filteredResults.length > 0) {
+      filteredResults = filteredResults.filter(user => {
+        if (!user.parques_autorizados) return false;
+        
+        try {
+          // Intentar parsear como JSON array
+          const parques = JSON.parse(user.parques_autorizados);
+          if (Array.isArray(parques)) {
+            // Buscar coincidencia parcial o exacta en el array
+            return parques.some(p => 
+              p.toLowerCase().includes(parqueNombre.toLowerCase()) ||
+              parqueNombre.toLowerCase().includes(p.toLowerCase())
+            );
+          }
+        } catch (e) {
+          // Si no es JSON, intentar como texto separado por comas
+          const parques = user.parques_autorizados.split(',').map(p => p.trim());
+          return parques.some(p => 
+            p.toLowerCase().includes(parqueNombre.toLowerCase()) ||
+            parqueNombre.toLowerCase().includes(p.toLowerCase())
+          );
+        }
+        
+        return false;
+      });
     }
     
-    query += ` ORDER BY usuario ASC`;
-    
-    const result = await env.DB_MASTER.prepare(query).bind(...params).all();
-    
     return new Response(JSON.stringify({
-      results: result.results || [],
-      has_more: false
+      results: filteredResults,
+      has_more: false,
+      debug: {
+        totalUsers: result.results?.length || 0,
+        filteredUsers: filteredResults.length,
+        parqueFilter: parqueNombre || 'none'
+      }
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   } catch (error) {
+    console.error('Error loading personal by parque:', error);
     return new Response(JSON.stringify({ 
       error: 'Error loading personal by parque', 
       details: error.message 
