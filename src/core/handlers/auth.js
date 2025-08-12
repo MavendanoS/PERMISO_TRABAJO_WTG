@@ -1,7 +1,7 @@
 import { InputSanitizer } from '../utils/sanitizers.js';
 import AuthService from '../services/authService.js';
 import AuditLogger from '../services/auditLogger.js';
-import { getLocalDateTime } from '../utils/time.js';
+import { getLocalDateTime, formatLocalDateTime } from '../utils/time.js';
 
 export async function handleLogin(request, corsHeaders, env, services) {
   const { rateLimiter, authService, auditLogger } = services;
@@ -95,10 +95,11 @@ export async function handleLogin(request, corsHeaders, env, services) {
       }
     }
     
-    // Actualizar último login
+    // Actualizar último login (D1 necesita string, no Date object)
+    const fechaLogin = formatLocalDateTime(getLocalDateTime());
     await env.DB_MASTER.prepare(`
       UPDATE usuarios SET ultimo_login = ? WHERE id = ?
-    `).bind(getLocalDateTime(), userResult.id).run();
+    `).bind(fechaLogin, userResult.id).run();
     
     // Determinar si es usuario Enel basado en el rol
     const esEnel = userResult.rol === 'Supervisor Enel' || 
