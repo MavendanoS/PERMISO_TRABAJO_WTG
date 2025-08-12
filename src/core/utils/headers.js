@@ -12,15 +12,11 @@ export function getSecurityHeaders() {
     "Content-Security-Policy": [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",          // ← permite íconos base64 en manifest
-      "manifest-src 'self' data:",     // ← permite manifest por data: URL
-      "connect-src 'self'",            // ← fetch/XHR a tu mismo worker
-      // Opcionales si usas estos recursos:
-      // "font-src 'self' data:",
-      // "worker-src 'self' blob:",
-      // "base-uri 'self'",
-      // "frame-ancestors 'none'"
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",  // ← Permite Google Fonts CSS
+      "font-src 'self' https://fonts.gstatic.com",                      // ← Permite Google Fonts archivos
+      "img-src 'self' data:",
+      "manifest-src 'self' data:",
+      "connect-src 'self'",
     ].join("; "),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
