@@ -239,7 +239,13 @@ export function generateTomaConocimientoPDF(data) {
     
     <div class="header">
         <div class="logo">
-        <img src="https://www.prwave.ro/wp-content/uploads/2018/08/Enel-Green-Power-logo.jpg" alt="Enel Green Power">
+        <!-- 🎨 LOGO ENEL GREEN POWER - INSTRUCCIONES PARA CAMBIAR -->
+        <!-- Para reemplazar el logo: -->
+        <!-- 1. Convertir imagen nueva a base64: https://base64.guru/converter/encode/image -->
+        <!-- 2. Reemplazar SOLO el string después de "base64," en la línea de abajo -->
+        <!-- 3. Mantener el formato: data:image/[tipo];base64,[string-base64] -->
+        <!-- Logo actual: SVG embebido para garantizar disponibilidad -->
+        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiB2aWV3Qm94PSIwIDAgMjAwIDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiBmaWxsPSJ3aGl0ZSIvPgo8dGV4dCB4PSIxNSIgeT0iMzAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiMwMDczOEEiPkVORUw8L3RleHQ+Cjx0ZXh0IHg9IjE1IiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNENBRjUwIj5HcmVlbiBQb3dlcjwvdGV4dD4KPGNpcmNsZSBjeD0iMTYwIiBjeT0iMzAiIHI9IjE1IiBmaWxsPSIjNENBRjUwIi8+CjxjaXJjbGUgY3g9IjE2MCIgY3k9IjMwIiByPSI4IiBmaWxsPSJ3aGl0ZSIvPgo8dGV4dCB4PSIxNTciIHk9IjM0IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjNENBRjUwIj5FPC90ZXh0Pgo8L3N2Zz4K" alt="Enel Green Power">
         </div>
         <div class="header-info">
             <div class="title">REGISTRO TOMA DE CONOCIMIENTO PT WIND</div>
