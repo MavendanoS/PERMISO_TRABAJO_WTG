@@ -7,8 +7,9 @@ export class InputSanitizer {
     if (typeof value !== 'string') {
       return value;
     }
-    // Remove any characters that are not word, whitespace, punctuation common in emails/paths
-    return value.replace(/[^\w\s.@\/\-]/g, '');
+    // Permitir letras (incluyendo Unicode/acentos), números, espacios y caracteres comunes
+    // Remover solo caracteres potencialmente peligrosos como <, >, &, ", ', `, etc.
+    return value.replace(/[<>'"`;{}()]/g, '');
   }
 
   static sanitizeObject(obj) {
