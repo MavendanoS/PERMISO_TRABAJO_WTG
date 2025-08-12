@@ -386,7 +386,7 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
       cierreData.fechaPuestaMarcha || null,
       cierreData.observacionesCierre || 'Trabajo completado',
       usuarioCierre,
-      getLocalDateTime()
+      formatLocalDateTime(getLocalDateTime())
     ).run();
     
     // Insertar materiales si los hay
@@ -408,7 +408,7 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
           material.numeroItem || null,
           material.numeroSerie || null,
           material.observaciones || null,
-          getLocalDateTime()
+          formatLocalDateTime(getLocalDateTime())
         ).run();
       }
     }
