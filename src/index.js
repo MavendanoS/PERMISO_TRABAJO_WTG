@@ -12,13 +12,13 @@ import RateLimiter from './core/services/rateLimiter.js';
 import AuthService from './core/services/authService.js';
 import AuditLogger from './core/services/auditLogger.js';
 
-import initializeDatabase from './core/db/init.js';
+//import initializeDatabase from './core/db/init.js';
 import handleApiRequest from './core/routes/api.js';
 
 export default {
   async fetch(request, env, ctx) {
     // Asegura que existan las tablas (idempotente: usa IF NOT EXISTS)
-    await initializeDatabase(env);
+    //await initializeDatabase(env);
 
     const corsHeaders = getCorsHeaders(env, request);
     const secHeaders = getSecurityHeaders();
