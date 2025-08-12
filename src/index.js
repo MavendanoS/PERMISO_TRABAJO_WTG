@@ -1,44 +1,64 @@
-// Entry point for the modular Cloudflare Worker.
-// This file reuses the original worker's fetch handler while importing
-// all modular components to ensure they're bundled by Wrangler.
-
+// src/index.js
 import getStyles from './core/webapp/styles.js';
 import getWebApp from './core/webapp/template.js';
 import getWebAppScript from './core/webapp/script.js';
+
 import SECURITY_CONFIG from './core/config/security.js';
 import SecurityError from './core/errors.js';
+
+import { getSecurityHeaders, getCorsHeaders } from './core/utils/headers.js';
+
 import RateLimiter from './core/services/rateLimiter.js';
 import AuthService from './core/services/authService.js';
 import AuditLogger from './core/services/auditLogger.js';
-import SQL_SCHEMAS from './core/db/sqlSchemas.js';
-import initializeDatabase from './core/db/init.js';
-import { getLocalDateTime, formatLocalDateTime } from './core/utils/time.js';
-import { getSecurityHeaders, getCorsHeaders } from './core/utils/headers.js';
-import { InputSanitizer } from './core/utils/sanitizers.js';
 
-// Import the original worker default export which contains the fetch handler and route logic.
-import worker from '../worker.js';
+import handleApiRequest from './core/routes/api.js';
 
-// Ensure the imported modules are referenced so they are not tree-shaken by the bundler.
-void getStyles;
-void getWebApp;
-void getWebAppScript;
-void SECURITY_CONFIG;
-void SecurityError;
-void RateLimiter;
-void AuthService;
-void AuditLogger;
-void SQL_SCHEMAS;
-void initializeDatabase;
-void getLocalDateTime;
-void formatLocalDateTime;
-void getSecurityHeaders;
-void getCorsHeaders;
-void InputSanitizer;
+export default {
+  async fetch(request, env, ctx) {
+    // CORS fijo y headers de seguridad (igual que en worker.js)
+    const corsHeaders = getCorsHeaders(env, request);
+    const secHeaders = getSecurityHeaders();
 
-// Export the fetch handler from the original worker.
-export async function fetch(request, env, ctx) {
-  return worker.fetch(request, env, ctx);
-}
+    // Instancias compartidas (como en el monolito)
+    const services = {
+      rateLimiter: new RateLimiter(env),
+      auth: new AuthService(env),
+      audit: new AuditLogger(env),
+      security: SECURITY_CONFIG,
+    };
 
-export default { fetch };
+    try {
+      const url = new URL(request.url);
+      const { pathname } = url;
+
+      // Rutas de la WebApp (igual que worker.js)
+      if (request.method === 'GET' && pathname === '/') {
+        return new Response(getWebApp(), { headers: { 'content-type': 'text/html; charset=utf-8', ...secHeaders }});
+      }
+      if (request.method === 'GET' && pathname === '/styles.css') {
+        return new Response(getStyles(), { headers: { 'content-type': 'text/css; charset=utf-8', ...secHeaders }});
+      }
+      if (request.method === 'GET' && pathname === '/app.js') {
+        return new Response(getWebAppScript(), { headers: { 'content-type': 'application/javascript; charset=utf-8', ...secHeaders }});
+      }
+
+      // API (router exacto movido a módulos)
+      if (pathname.startsWith('/api/')) {
+        return await handleApiRequest(request, corsHeaders, env, services);
+      }
+
+      // 404 por defecto (igual que worker.js)
+      return new Response(JSON.stringify({ error: 'Not Found' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json', ...corsHeaders, ...secHeaders },
+      });
+    } catch (err) {
+      const status = err instanceof SecurityError ? 403 : 500;
+      return new Response(JSON.stringify({ error: err.message || 'Internal Error' }), {
+        status,
+        headers: { 'content-type': 'application/json', ...corsHeaders, ...secHeaders },
+      });
+    }
+  }
+};

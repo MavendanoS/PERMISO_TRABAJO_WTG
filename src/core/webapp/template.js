@@ -1,3 +1,6 @@
+import getStyles from './styles.js';
+import getWebAppScript from './script.js';
+
 export function getWebApp() {
   return '<!DOCTYPE html>' +
 '<html lang=\"es\">' +
