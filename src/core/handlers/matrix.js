@@ -1,3 +1,5 @@
+import { InputSanitizer } from '../utils/sanitizers.js';
+
 export async function handleMatrizRiesgos(request, corsHeaders, env) {
   try {
     const url = new URL(request.url);

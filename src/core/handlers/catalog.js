@@ -1,3 +1,5 @@
+import { InputSanitizer } from '../utils/sanitizers.js';
+
 export async function handleParques(request, corsHeaders, env) {
   try {
     const result = await env.DB_MASTER.prepare(`

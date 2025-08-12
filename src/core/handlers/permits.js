@@ -1,5 +1,6 @@
 import AuditLogger from '../services/auditLogger.js';
 import { getLocalDateTime, formatLocalDateTime } from '../utils/time.js';
+import { InputSanitizer } from '../utils/sanitizers.js';
 
 export async function handlePermisos(request, corsHeaders, env, currentUser, services) {
   const { auditLogger } = services;
@@ -74,8 +75,8 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
         permisoData.tipoMantenimiento || 'PREVENTIVO',
         permisoData.tipoMantenimientoOtros || null,
         permisoData.usuarioCreador || currentUser?.email || 'unknown',
-        permisoData.fechaInicio || getLocalDateTime(),
-        getLocalDateTime(),
+        permisoData.fechaInicio || formatLocalDateTime(getLocalDateTime()),
+        formatLocalDateTime(getLocalDateTime()),
         'CREADO'
       ).run();
       
@@ -95,7 +96,7 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
             persona.nombre || 'Sin nombre', 
             persona.empresa || 'Sin empresa', 
             persona.rol || 'Sin rol',
-            getLocalDateTime()
+            formatLocalDateTime(getLocalDateTime())
           ).run();
         }
       }
@@ -113,7 +114,7 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
             actividad.id || 'unknown', 
             actividad.nombre || 'Sin nombre', 
             actividad.tipo || 'RUTINARIA',
-            getLocalDateTime()
+            formatLocalDateTime(getLocalDateTime())
           ).run();
         }
       }
@@ -133,7 +134,7 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
             riesgo.riesgo || 'Sin riesgo', 
             riesgo.medidas || 'Sin medidas', 
             riesgo.codigo || null,
-            getLocalDateTime()
+            formatLocalDateTime(getLocalDateTime())
           ).run();
         }
       }
@@ -263,7 +264,7 @@ export async function handleAprobarPermiso(request, corsHeaders, env, currentUse
       WHERE id = ? AND estado = 'CREADO'
     `).bind(
       usuarioAprobador,
-      getLocalDateTime(),
+      formatLocalDateTime(getLocalDateTime()),
       permisoId
     ).run();
     
@@ -402,7 +403,7 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
           material.descripcion || 'Material sin descripción',
           material.propietario || 'No especificado',
           material.almacen || 'Central',
-          getLocalDateTime(),
+          formatLocalDateTime(getLocalDateTime()),
           material.numeroItem || null,
           material.numeroSerie || null,
           material.observaciones || null,
@@ -526,7 +527,7 @@ export async function handleHealth(request, corsHeaders, env) {
         rateLimitKV: env.RATE_LIMIT_KV ? 'Connected' : 'Not configured'
       },
       databases: checks,
-      localTime: getLocalDateTime(),
+      localTime: formatLocalDateTime(getLocalDateTime()),
       message: 'Sistema operativo con D1 Database'
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -535,7 +536,7 @@ export async function handleHealth(request, corsHeaders, env) {
     return new Response(JSON.stringify({
       status: 'ERROR',
       error: error.message,
-      timestamp: getLocalDateTime()
+      timestamp: formatLocalDateTime(getLocalDateTime())
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
