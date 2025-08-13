@@ -305,7 +305,7 @@ export function getWebApp() {
                         '<select id=\"materialAlmacen\">' +
                             '<option value=\"Central\">Central</option>' +
                             '<option value=\"Sitio\">Sitio</option>' +
-                            '<option value=\"Móvil\">Móvil</option>' +
+                            '<option value=\"Contratista\">Contratista</option>' +
                         '</select>' +
                     '</div>' +
                     '<button type=\"button\" id=\"addMaterialBtn\" class=\"btn btn-secondary btn-small\">+</button>' +

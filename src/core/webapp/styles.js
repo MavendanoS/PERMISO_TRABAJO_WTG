@@ -631,17 +631,41 @@ export function getStyles() {
     
     /* Tabla de materiales */
     .materials-table-container {
-        max-height: 280px;
-        overflow-y: auto;
+        max-height: 300px !important;
+        overflow-y: scroll !important;
+        overflow-x: auto;
         border: 1px solid var(--border-color);
         border-radius: var(--radius-md);
         background: white;
+        scrollbar-width: thin;
+        scrollbar-color: var(--accent-color) var(--bg-secondary);
+    }
+    
+    .materials-table-container::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .materials-table-container::-webkit-scrollbar-track {
+        background: var(--bg-secondary);
+        border-radius: 4px;
+    }
+    
+    .materials-table-container::-webkit-scrollbar-thumb {
+        background: var(--accent-color);
+        border-radius: 4px;
+    }
+    
+    .materials-table-container::-webkit-scrollbar-thumb:hover {
+        background: var(--primary-color);
     }
     
     .materials-table {
         width: 100%;
+        min-width: 500px;
         border-collapse: collapse;
         font-size: 12px;
+        table-layout: fixed;
     }
     
     .materials-table thead {
@@ -649,25 +673,53 @@ export function getStyles() {
         color: white;
         position: sticky;
         top: 0;
-        z-index: 1;
+        z-index: 2;
     }
     
     .materials-table th {
-        padding: 10px 8px;
-        text-align: left;
+        padding: 10px 6px;
+        text-align: center;
         font-weight: 600;
-        font-size: 11px;
+        font-size: 10px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.3px;
+        border-right: 1px solid rgba(255,255,255,0.2);
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    
+    .materials-table th:last-child {
+        border-right: none;
     }
     
     .materials-table td {
-        padding: 8px;
+        padding: 8px 6px;
         border-bottom: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .materials-table td:first-child {
+        text-align: center;
+        font-weight: 600;
+    }
+    
+    .materials-table td:nth-child(2) {
+        text-align: left;
+        white-space: normal;
+        word-wrap: break-word;
+        max-width: 150px;
+    }
+    
+    .materials-table td:last-child {
+        border-right: none;
     }
     
     .materials-table tbody tr:hover {
-        background: var(--bg-secondary);
+        background: var(--bg-secondary) !important;
     }
     
     .materials-table tbody tr:nth-child(even) {
