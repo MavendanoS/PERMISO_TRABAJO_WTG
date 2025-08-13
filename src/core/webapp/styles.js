@@ -441,7 +441,8 @@ export function getStyles() {
     
     .permiso-card-container {
         perspective: 1000px;
-        margin-bottom: 16px;
+        margin-bottom: 20px;
+        position: relative;
     }
     
     .permiso-card {
@@ -449,12 +450,20 @@ export function getStyles() {
         width: 100%;
         height: 100%;
         min-height: 300px;
-        transition: transform 0.6s;
+        transition: all 0.6s ease;
         transform-style: preserve-3d;
+        z-index: 1;
     }
     
     .permiso-card.flipped {
         transform: rotateY(180deg);
+        z-index: 10;
+        margin-bottom: 40px;
+    }
+    
+    .permiso-card-container.flipped-container {
+        z-index: 10;
+        margin-bottom: 60px;
     }
     
     .permiso-card-inner {
@@ -481,6 +490,8 @@ export function getStyles() {
         transform: rotateY(180deg);
         overflow-y: auto;
         max-height: 600px;
+        box-shadow: var(--shadow-lg);
+        border: 2px solid var(--accent-color);
     }
     
     .btn-flip {
@@ -544,6 +555,7 @@ export function getStyles() {
         min-height: 200px;
         max-height: 350px;
         overflow-y: auto;
+        padding-bottom: 20px;
     }
     
     .tab-pane {

@@ -1196,16 +1196,25 @@ export function getWebAppScript() {
     // Función para voltear las tarjetas
     window.flipCard = function(permisoId) {
         const card = document.querySelector(\`.permiso-card[data-permiso-id="\${permisoId}"]\`);
-        if (card) {
+        const container = card?.closest('.permiso-card-container');
+        
+        if (card && container) {
+            const isFlipped = card.classList.contains('flipped');
+            
+            // Toggle flip
             card.classList.toggle('flipped');
-            // Resetear a la primera pestaña cuando se voltea
-            const tabs = card.querySelectorAll('.card-tab');
-            const panes = card.querySelectorAll('.tab-pane');
-            tabs.forEach(t => t.classList.remove('active'));
-            panes.forEach(p => p.style.display = 'none');
-            if (tabs[0]) tabs[0].classList.add('active');
-            if (panes[0]) {
-                panes[0].style.display = 'block';
+            container.classList.toggle('flipped-container');
+            
+            // Resetear a la primera pestaña cuando se voltea hacia atrás
+            if (!isFlipped) {
+                const tabs = card.querySelectorAll('.card-tab');
+                const panes = card.querySelectorAll('.tab-pane');
+                tabs.forEach(t => t.classList.remove('active'));
+                panes.forEach(p => p.style.display = 'none');
+                if (tabs[0]) tabs[0].classList.add('active');
+                if (panes[0]) {
+                    panes[0].style.display = 'block';
+                }
             }
         }
     }
