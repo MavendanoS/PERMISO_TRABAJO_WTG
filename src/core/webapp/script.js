@@ -988,78 +988,116 @@ export function getWebAppScript() {
                         
                         <!-- Tab: Tiempos -->
                         <div class="tab-pane" data-tab="tiempos" style="display: none;">
-                            <div class="permiso-info">
-                                <h4 style="margin-bottom: 16px; color: var(--primary-color);">Horarios de Trabajo</h4>
-                                
-                                <div class="timeline-grid">
+                            <div class="tiempos-grid">
+                                <!-- Columna Izquierda: Trabajos -->
+                                <div class="tiempos-column">
                                     \${permiso.fecha_inicio_trabajos ? \`
-                                        <div class="timeline-item">
-                                            <div class="timeline-icon">🛠️</div>
-                                            <div class="timeline-content">
-                                                <div class="timeline-label">Inicio de Trabajos</div>
-                                                <div class="timeline-value">\${formatDate(permiso.fecha_inicio_trabajos)}</div>
+                                        <div class="tiempo-item trabajo">
+                                            <div class="tiempo-icon">🛠️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Inicio de Trabajos</div>
+                                                <div class="tiempo-value">\${formatDate(permiso.fecha_inicio_trabajos)}</div>
                                             </div>
                                         </div>
-                                    \` : ''}
+                                    \` : \`
+                                        <div class="tiempo-item-empty">
+                                            <div class="tiempo-icon-empty">🛠️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Inicio de Trabajos</div>
+                                                <div class="tiempo-value-empty">No registrado</div>
+                                            </div>
+                                        </div>
+                                    \`}
                                     
                                     \${permiso.fecha_fin_trabajos ? \`
-                                        <div class="timeline-item">
-                                            <div class="timeline-icon">✅</div>
-                                            <div class="timeline-content">
-                                                <div class="timeline-label">Fin de Trabajos</div>
-                                                <div class="timeline-value">\${formatDate(permiso.fecha_fin_trabajos)}</div>
+                                        <div class="tiempo-item trabajo">
+                                            <div class="tiempo-icon">✅</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Fin de Trabajos</div>
+                                                <div class="tiempo-value">\${formatDate(permiso.fecha_fin_trabajos)}</div>
                                             </div>
                                         </div>
-                                    \` : ''}
-                                    
-                                    \${permiso.fecha_parada_turbina ? \`
-                                        <div class="timeline-item">
-                                            <div class="timeline-icon">⏸️</div>
-                                            <div class="timeline-content">
-                                                <div class="timeline-label">Parada de Turbina</div>
-                                                <div class="timeline-value">\${formatDate(permiso.fecha_parada_turbina)}</div>
+                                    \` : \`
+                                        <div class="tiempo-item-empty">
+                                            <div class="tiempo-icon-empty">✅</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Fin de Trabajos</div>
+                                                <div class="tiempo-value-empty">No registrado</div>
                                             </div>
                                         </div>
-                                    \` : ''}
-                                    
-                                    \${permiso.fecha_puesta_marcha_turbina ? \`
-                                        <div class="timeline-item">
-                                            <div class="timeline-icon">▶️</div>
-                                            <div class="timeline-content">
-                                                <div class="timeline-label">Puesta en Marcha</div>
-                                                <div class="timeline-value">\${formatDate(permiso.fecha_puesta_marcha_turbina)}</div>
-                                            </div>
-                                        </div>
-                                    \` : ''}
+                                    \`}
                                 </div>
                                 
-                                \${!permiso.fecha_inicio_trabajos && !permiso.fecha_fin_trabajos && !permiso.fecha_parada_turbina && !permiso.fecha_puesta_marcha_turbina ? \`
-                                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                                        <p>No hay información de tiempos disponible</p>
-                                    </div>
-                                \` : ''}
+                                <!-- Columna Derecha: Turbina -->
+                                <div class="tiempos-column">
+                                    \${permiso.fecha_parada_turbina ? \`
+                                        <div class="tiempo-item turbina">
+                                            <div class="tiempo-icon">⏸️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Parada de Turbina</div>
+                                                <div class="tiempo-value">\${formatDate(permiso.fecha_parada_turbina)}</div>
+                                            </div>
+                                        </div>
+                                    \` : \`
+                                        <div class="tiempo-item-empty">
+                                            <div class="tiempo-icon-empty">⏸️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Parada de Turbina</div>
+                                                <div class="tiempo-value-empty">No registrado</div>
+                                            </div>
+                                        </div>
+                                    \`}
+                                    
+                                    \${permiso.fecha_puesta_marcha_turbina ? \`
+                                        <div class="tiempo-item turbina">
+                                            <div class="tiempo-icon">▶️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Puesta en Marcha</div>
+                                                <div class="tiempo-value">\${formatDate(permiso.fecha_puesta_marcha_turbina)}</div>
+                                            </div>
+                                        </div>
+                                    \` : \`
+                                        <div class="tiempo-item-empty">
+                                            <div class="tiempo-icon-empty">▶️</div>
+                                            <div class="tiempo-content">
+                                                <div class="tiempo-label">Puesta en Marcha</div>
+                                                <div class="tiempo-value-empty">No registrado</div>
+                                            </div>
+                                        </div>
+                                    \`}
+                                </div>
                             </div>
                         </div>
                         
                         <!-- Tab: Materiales -->
                         <div class="tab-pane" data-tab="materiales" style="display: none;">
                             \${permiso.materiales_detalle && permiso.materiales_detalle.length > 0 ? \`
-                                <div class="permiso-info">
-                                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                                        <div class="permiso-info-label">Materiales y Herramientas Utilizados</div>
-                                        <div class="materials-grid">
-                                            \${permiso.materiales_detalle.map(mat => \`
-                                                <div class="material-card">
-                                                    <div class="material-name">\${mat.material_nombre}</div>
-                                                    <div class="material-quantity">\${mat.material_cantidad} \${mat.material_unidad || 'unidades'}</div>
-                                                </div>
+                                <div class="materials-table-container">
+                                    <table class="materials-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 50px;">#</th>
+                                                <th>Material/Herramienta</th>
+                                                <th style="width: 80px;">Cantidad</th>
+                                                <th style="width: 80px;">Unidad</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            \${permiso.materiales_detalle.map((mat, index) => \`
+                                                <tr>
+                                                    <td>\${index + 1}</td>
+                                                    <td>\${mat.material_nombre}</td>
+                                                    <td>\${mat.material_cantidad}</td>
+                                                    <td>\${mat.material_unidad || 'und'}</td>
+                                                </tr>
                                             \`).join('')}
-                                        </div>
-                                    </div>
+                                        </tbody>
+                                    </table>
                                 </div>
                             \` : \`
                                 <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                                    <p>No hay materiales registrados</p>
+                                    <p>📦 No hay materiales registrados</p>
+                                    <p style="font-size: 12px; margin-top: 8px;">Los materiales utilizados aparecerán aquí cuando se registren</p>
                                 </div>
                             \`}
                         </div>
@@ -1067,22 +1105,32 @@ export function getWebAppScript() {
                         <!-- Tab: Cierre -->
                         <div class="tab-pane" data-tab="cierre" style="display: none;">
                             \${permiso.estado === 'CERRADO' ? \`
-                                <div class="permiso-info">
-                                    <h4 style="margin-bottom: 16px; color: var(--primary-color);">Información de Cierre</h4>
-                                    
-                                    <div class="cierre-info-box">
-                                        \${permiso.observaciones_cierre ? \`
-                                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                                                <div class="permiso-info-label">Observaciones</div>
-                                                <div class="permiso-info-value" style="background: var(--bg-secondary); padding: 12px; border-radius: 4px; margin-top: 8px;">\${permiso.observaciones_cierre}</div>
+                                <div class="cierre-grid">
+                                    <!-- Columna Izquierda: Responsable -->
+                                    <div class="cierre-column">
+                                        <div class="cierre-item responsable">
+                                            <div class="cierre-icon">👤</div>
+                                            <div class="cierre-content">
+                                                <div class="cierre-label">Responsable del Cierre</div>
+                                                <div class="cierre-value">\${permiso.usuario_cierre || 'No especificado'}</div>
                                             </div>
-                                        \` : ''}
+                                        </div>
                                         
-                                        <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 16px;">
-                                            <div class="permiso-info-label">Responsable del Cierre</div>
-                                            <div class="permiso-info-value">
-                                                <strong>\${permiso.usuario_cierre || 'N/A'}</strong><br>
-                                                <span style="color: var(--text-secondary); font-size: 12px;">Fecha: \${formatDate(permiso.fecha_cierre)}</span>
+                                        <div class="cierre-item fecha">
+                                            <div class="cierre-icon">📅</div>
+                                            <div class="cierre-content">
+                                                <div class="cierre-label">Fecha de Cierre</div>
+                                                <div class="cierre-value">\${formatDate(permiso.fecha_cierre)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Columna Derecha: Observaciones -->
+                                    <div class="cierre-column">
+                                        <div class="cierre-item observaciones">
+                                            <div class="cierre-content-full">
+                                                <div class="cierre-label">Observaciones</div>
+                                                <div class="cierre-observaciones">\${permiso.observaciones_cierre || 'Sin observaciones registradas'}</div>
                                             </div>
                                         </div>
                                     </div>

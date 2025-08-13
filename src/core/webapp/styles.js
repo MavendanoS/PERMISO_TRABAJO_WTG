@@ -555,82 +555,203 @@ export function getStyles() {
         to { opacity: 1; transform: translateY(0); }
     }
     
-    /* Timeline para tiempos */
-    .timeline-grid {
+    /* Layout para tiempos - 2 columnas */
+    .tiempos-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    
+    .tiempos-column {
         display: flex;
         flex-direction: column;
         gap: 12px;
     }
     
-    .timeline-item {
+    .tiempo-item, .tiempo-item-empty {
         display: flex;
         align-items: center;
         padding: 12px;
-        background: var(--bg-secondary);
         border-radius: var(--radius-md);
+        transition: all 0.2s ease;
+    }
+    
+    .tiempo-item.trabajo {
+        background: #e8f5e8;
+        border-left: 4px solid var(--success-color);
+    }
+    
+    .tiempo-item.turbina {
+        background: #e3f2fd;
         border-left: 4px solid var(--accent-color);
     }
     
-    .timeline-icon {
-        font-size: 18px;
+    .tiempo-item-empty {
+        background: var(--bg-tertiary);
+        border-left: 4px solid var(--border-color);
+        opacity: 0.7;
+    }
+    
+    .tiempo-icon, .tiempo-icon-empty {
+        font-size: 16px;
         margin-right: 12px;
-        width: 30px;
+        width: 24px;
         text-align: center;
     }
     
-    .timeline-content {
+    .tiempo-icon-empty {
+        opacity: 0.5;
+    }
+    
+    .tiempo-content {
         flex: 1;
     }
     
-    .timeline-label {
-        font-size: 11px;
+    .tiempo-label {
+        font-size: 10px;
         color: var(--text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.5px;
         margin-bottom: 2px;
+        font-weight: 600;
     }
     
-    .timeline-value {
+    .tiempo-value {
         font-weight: 500;
         color: var(--text-primary);
+        font-size: 12px;
     }
     
-    /* Grid para materiales */
-    .materials-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 12px;
-        margin-top: 12px;
+    .tiempo-value-empty {
+        font-weight: 400;
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-style: italic;
     }
     
-    .material-card {
+    /* Tabla de materiales */
+    .materials-table-container {
+        max-height: 280px;
+        overflow-y: auto;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: white;
+    }
+    
+    .materials-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    
+    .materials-table thead {
+        background: var(--primary-color);
+        color: white;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    
+    .materials-table th {
+        padding: 10px 8px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .materials-table td {
+        padding: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .materials-table tbody tr:hover {
         background: var(--bg-secondary);
+    }
+    
+    .materials-table tbody tr:nth-child(even) {
+        background: var(--bg-tertiary);
+    }
+    
+    /* Layout para cierre - 2 columnas */
+    .cierre-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        height: 100%;
+    }
+    
+    .cierre-column {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .cierre-item {
+        display: flex;
+        align-items: flex-start;
         padding: 12px;
         border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+    }
+    
+    .cierre-item.responsable {
+        border-left: 4px solid var(--accent-color);
+    }
+    
+    .cierre-item.fecha {
         border-left: 4px solid var(--success-color);
     }
     
-    .material-name {
+    .cierre-item.observaciones {
+        border-left: 4px solid var(--warning-color);
+        height: fit-content;
+        min-height: 120px;
+    }
+    
+    .cierre-icon {
+        font-size: 16px;
+        margin-right: 12px;
+        width: 24px;
+        text-align: center;
+        margin-top: 2px;
+    }
+    
+    .cierre-content {
+        flex: 1;
+    }
+    
+    .cierre-content-full {
+        width: 100%;
+    }
+    
+    .cierre-label {
+        font-size: 10px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    
+    .cierre-value {
         font-weight: 500;
         color: var(--text-primary);
-        margin-bottom: 4px;
-    }
-    
-    .material-quantity {
         font-size: 12px;
-        color: var(--text-secondary);
-        background: white;
-        padding: 4px 8px;
-        border-radius: 12px;
-        display: inline-block;
     }
     
-    /* Información de cierre */
-    .cierre-info-box {
-        background: var(--bg-secondary);
-        padding: 16px;
-        border-radius: var(--radius-lg);
+    .cierre-observaciones {
+        background: white;
+        padding: 10px;
+        border-radius: 4px;
         border: 1px solid var(--border-color);
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--text-primary);
+        min-height: 80px;
+        max-height: 150px;
+        overflow-y: auto;
     }
     
     .permiso-header {
