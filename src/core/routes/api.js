@@ -1,5 +1,5 @@
 // src/core/routes/api.js
-import { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers } from '../handlers/auth.js';
+import { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers, handleDebugPassword } from '../handlers/auth.js';
 import {
   handleUsers, handlePersonal, handlePersonalByParque, handleSupervisores,
 } from '../handlers/users.js';
@@ -18,7 +18,7 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
   
   try {
     // Endpoints públicos que no requieren autenticación
-    const publicEndpoints = ['login', 'health', 'fix-passwords', 'list-users'];
+    const publicEndpoints = ['login', 'health', 'fix-passwords', 'list-users', 'debug-password'];
     let currentUser = null;
     
     // Verificar autenticación para endpoints protegidos
@@ -63,6 +63,8 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleFixPasswords(request, corsHeaders, env);
       case 'list-users':
         return await handleListUsers(request, corsHeaders, env);
+      case 'debug-password':
+        return await handleDebugPassword(request, corsHeaders, env, services);
       case 'users':
         return await handleUsers(request, corsHeaders, env);
       case 'personal':

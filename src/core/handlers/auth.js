@@ -370,4 +370,80 @@ export async function handleListUsers(request, corsHeaders, env) {
   }
 }
 
-export default { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers };
+export async function handleDebugPassword(request, corsHeaders, env, services) {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  try {
+    const { authService } = services;
+    const { email, password } = await request.json();
+    
+    // Buscar usuario
+    const user = await env.DB_MASTER.prepare(`
+      SELECT id, usuario, email, password_hash, password_temporal
+      FROM usuarios 
+      WHERE LOWER(email) = LOWER(?)
+      LIMIT 1
+    `).bind(email).first();
+
+    if (!user) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Usuario no encontrado'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Verificar contraseña con debug info
+    const verification = await authService.verifyPassword(password, user.password_hash);
+    
+    // Debug: verificar qué tipo está siendo detectado
+    const isHex = /^[a-f0-9]+$/i.test(user.password_hash);
+    const isBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(user.password_hash) && user.password_hash.length % 4 === 0;
+    
+    return new Response(JSON.stringify({
+      success: true,
+      user_info: {
+        id: user.id,
+        usuario: user.usuario,
+        email: user.email,
+        password_temporal: user.password_temporal,
+        stored_hash: user.password_hash,
+        stored_hash_length: user.password_hash?.length || 0
+      },
+      password_check: {
+        provided_password: password,
+        provided_length: password.length,
+        verification_result: verification,
+        is_direct_match: password === user.password_hash
+      },
+      format_detection: {
+        is_pbkdf2: user.password_hash?.startsWith('pbkdf2:'),
+        has_colon: user.password_hash?.includes(':'),
+        is_hex: isHex,
+        is_base64: isBase64,
+        should_be_plaintext: !user.password_hash?.startsWith('pbkdf2:') && !user.password_hash?.includes(':') && !isHex && !isBase64
+      }
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Error en debug-password:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export default { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers, handleDebugPassword };

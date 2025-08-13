@@ -119,8 +119,8 @@ export default class AuthService {
       return { valid, needsUpdate };
     }
 
-    // 4) base64(SHA-256(password))
-    if (isBase64(stored)) {
+    // 4) base64(SHA-256(password)) - solo si es suficientemente largo para ser un hash real
+    if (isBase64(stored) && stored.length >= 32) {  // Base64 de SHA-256 sería ~44 chars
       const digest = await crypto.subtle.digest('SHA-256', enc.encode(plain));
       const b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
       valid = timingSafeEqual(b64, stored);
