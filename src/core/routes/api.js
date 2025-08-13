@@ -17,21 +17,40 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
   const endpoint = url.pathname.replace('/api/', '');
   
   try {
-    // Endpoints públicos
+    // Endpoints públicos que no requieren autenticación
     const publicEndpoints = ['login', 'health'];
     let currentUser = null;
     
-    // Verificar autenticación si no es endpoint público
+    // Verificar autenticación para endpoints protegidos
     if (!publicEndpoints.includes(endpoint)) {
       const authHeader = request.headers.get('Authorization');
       
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        try {
-          currentUser = await authService.verifyToken(token);
-        } catch (error) {
-          console.log('Token verification failed, continuing without auth');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: 'No autorizado - Token requerido'
+        }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+      
+      const token = authHeader.substring(7);
+      try {
+        currentUser = await authService.verifyToken(token);
+        
+        // Verificar que el token tenga la estructura esperada
+        if (!currentUser || !currentUser.sub) {
+          throw new Error('Token inválido - estructura incorrecta');
         }
+      } catch (error) {
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: 'Token inválido o expirado'
+        }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
       }
     }
     
@@ -73,7 +92,6 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
         });
     }
   } catch (error) {
-    console.error(`API error on ${endpoint}:`, error);
     return new Response(JSON.stringify({ 
       error: error.message,
       endpoint: endpoint 

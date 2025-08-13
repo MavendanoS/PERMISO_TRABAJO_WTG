@@ -91,7 +91,7 @@ export async function handleLogin(request, corsHeaders, env, services) {
           UPDATE usuarios SET password_hash = ? WHERE id = ?
         `).bind(newHash, userResult.id).run();
       } catch (error) {
-        console.warn('Could not update password hash:', error);
+        // Silently fail password hash update - non-critical operation
       }
     }
     
@@ -170,7 +170,6 @@ export async function handleLogin(request, corsHeaders, env, services) {
     });
     
   } catch (error) {
-    console.error('Login error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
       message: 'Error interno del servidor' 
@@ -250,12 +249,9 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
     });
     
   } catch (error) {
-    console.error('Error cambiando contraseña:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: 'Error al cambiar la contraseña',
-      debug: error.message || 'Error desconocido',
-      debugStack: error.stack 
+      error: 'Error al cambiar la contraseña'
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }

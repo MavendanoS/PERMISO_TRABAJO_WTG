@@ -27,9 +27,9 @@ export async function handleParques(request, corsHeaders, env) {
 export async function handleAerogeneradores(request, corsHeaders, env) {
   try {
     const url = new URL(request.url);
-    const parqueNombre = InputSanitizer.sanitizeForSQL(url.searchParams.get('parque'));
+    const parqueNombre = InputSanitizer.sanitizeString(url.searchParams.get('parque'));
     
-    // Usar la tabla Aerogeneradores del DB_PERMISOS
+    // Usar la tabla Aerogeneradores del DB_PERMISOS con prepared statements
     let query = 'SELECT Plant_Code, Plant_Name, WTG_Name FROM Aerogeneradores';
     let params = [];
     
@@ -59,10 +59,8 @@ export async function handleAerogeneradores(request, corsHeaders, env) {
     });
     
   } catch (error) {
-    console.error('Error loading aerogeneradores:', error);
     return new Response(JSON.stringify({ 
-      error: 'Error loading aerogeneradores', 
-      details: error.message 
+      error: 'Error loading aerogeneradores'
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }

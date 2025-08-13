@@ -29,6 +29,6 @@ enabled = true
 [vars]
 # Variables públicas si las necesitas
 
-# Secretos (usar wrangler secret put)
-#JWT_SECRET
-# ALLOWED_ORIGINS 
+# Secretos configurados (usar wrangler secret put)
+# JWT_SECRET - Configurado como secret
+# ALLOWED_ORIGINS - Configurado como secret 

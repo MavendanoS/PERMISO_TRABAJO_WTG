@@ -23,7 +23,10 @@ export class InputSanitizer {
     return sanitized;
   }
 
+  // DEPRECATED: Use prepared statements instead
+  // This method is kept for backward compatibility but should not be used
   static sanitizeForSQL(value) {
+    console.warn('sanitizeForSQL is deprecated. Use prepared statements instead.');
     if (typeof value === 'string') {
       return value.replace(/'/g, "''");
     }

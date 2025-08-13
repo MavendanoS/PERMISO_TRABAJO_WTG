@@ -35,10 +35,22 @@ export function getCorsHeaders(env, request) {
   const reqOrigin = request.headers.get('Origin') || '';
   let raw = env.ALLOWED_ORIGINS;
 
+  // Por defecto, rechazar todos los orígenes si no está configurado
+  if (!raw) {
+    console.warn('ALLOWED_ORIGINS not configured - defaulting to restrictive CORS');
+    return {
+      'Access-Control-Allow-Origin': 'null',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'false',
+    };
+  }
+
   // Normaliza ALLOWED_ORIGINS a: '*' o Array<string>
   let allowed;
   try {
-    if (!raw || raw === '*') {
+    if (raw === '*') {
+      // Solo permitir '*' si está explícitamente configurado
       allowed = '*';
     } else if (typeof raw === 'string' && raw.trim().startsWith('[')) {
       // JSON array, p. ej.: ["https://a.com","https://b.com"]
@@ -47,22 +59,24 @@ export function getCorsHeaders(env, request) {
       // coma-separado, p. ej.: https://a.com,https://b.com
       allowed = raw.split(',').map(s => s.trim()).filter(Boolean);
     } else {
-      allowed = '*';
+      // Si no es un formato válido, rechazar
+      allowed = [];
     }
   } catch {
-    allowed = '*';
+    // En caso de error de parsing, ser restrictivo
+    allowed = [];
   }
 
   const allowOrigin =
     allowed === '*'
       ? '*'
-      : (allowed.includes && allowed.includes(reqOrigin)) ? reqOrigin : 'null';
+      : (Array.isArray(allowed) && allowed.includes(reqOrigin)) ? reqOrigin : 'null';
 
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Credentials': allowed === '*' ? 'false' : 'true',
   };
 }
 

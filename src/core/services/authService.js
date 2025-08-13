@@ -34,7 +34,12 @@ const b64url = (s) => s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '
 export default class AuthService {
   constructor(env) {
     this.env = env;
-    this.SECRET = env.JWT_SECRET || crypto.randomUUID();
+    // JWT_SECRET debe estar configurado en Cloudflare
+    // Si no está configurado, lanzar error en lugar de generar uno aleatorio
+    if (!env.JWT_SECRET) {
+      throw new Error('JWT_SECRET no está configurado. Configure en Cloudflare: wrangler secret put JWT_SECRET');
+    }
+    this.SECRET = env.JWT_SECRET;
   }
 
   async hashPassword(password) {
