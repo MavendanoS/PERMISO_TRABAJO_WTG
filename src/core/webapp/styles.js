@@ -439,18 +439,73 @@ export function getStyles() {
         background: var(--bg-secondary);
     }
     
+    .permiso-card-container {
+        perspective: 1000px;
+        margin-bottom: 16px;
+    }
+    
     .permiso-card {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        min-height: 300px;
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+    }
+    
+    .permiso-card.flipped {
+        transform: rotateY(180deg);
+    }
+    
+    .permiso-card-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+    }
+    
+    .permiso-card-front,
+    .permiso-card-back {
+        position: absolute;
+        width: 100%;
+        min-height: 300px;
+        backface-visibility: hidden;
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
         border-radius: var(--radius-lg);
         padding: 20px;
-        margin-bottom: 16px;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .permiso-card-back {
+        transform: rotateY(180deg);
+        overflow-y: auto;
+        max-height: 600px;
+    }
+    
+    .btn-flip {
+        background: var(--accent-color);
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 12px;
         transition: all 0.2s ease;
     }
     
-    .permiso-card:hover {
-        box-shadow: var(--shadow-md);
-        transform: translateY(-2px);
+    .btn-flip:hover {
+        background: var(--primary-color);
+        transform: translateX(-2px);
+    }
+    
+    .btn-info {
+        background: var(--accent-color);
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background: var(--primary-color);
     }
     
     .permiso-header {

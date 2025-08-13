@@ -839,8 +839,12 @@ export function getWebAppScript() {
     }
     
     function createPermisoCard(permiso) {
+        const cardContainer = document.createElement('div');
+        cardContainer.className = 'permiso-card-container';
+        
         const card = document.createElement('div');
         card.className = 'permiso-card';
+        card.dataset.permisoId = permiso.id;
         
         const estadoClass = 'estado-' + (permiso.estado || 'CREADO').toLowerCase();
         const esEnel = currentUser?.esEnel || currentUser?.rol === 'Supervisor Enel';
@@ -863,117 +867,180 @@ export function getWebAppScript() {
             estadoTexto = 'PENDIENTE DE APROBACIÓN';
         }
         
+        // Crear estructura de tarjeta con frente y reverso
         card.innerHTML = \`
-            <div class="permiso-header">
-                <div class="permiso-numero">\${permiso.numero_pt}</div>
-                <div class="permiso-estado \${estadoClass}">\${estadoTexto}</div>
-            </div>
-            
-            <div class="permiso-info">
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Planta</div>
-                    <div class="permiso-info-value">\${permiso.planta_nombre}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Aerogenerador</div>
-                    <div class="permiso-info-value">\${permiso.aerogenerador_nombre || 'N/A'}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Jefe de Faena</div>
-                    <div class="permiso-info-value">\${permiso.jefe_faena_nombre}</div>
-                </div>
-                <div class="permiso-info-item">
-                    <div class="permiso-info-label">Fecha Creación</div>
-                    <div class="permiso-info-value">\${formatDate(permiso.fecha_creacion)}</div>
-                </div>
-            </div>
-            
-            <div class="permiso-info">
-                <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                    <div class="permiso-info-label">Descripción</div>
-                    <div class="permiso-info-value">\${permiso.descripcion}</div>
-                </div>
-            </div>
-            
-            \${permiso.personal_asignado ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Personal Asignado</div>
-                        <div class="permiso-info-value">\${permiso.personal_asignado}</div>
+            <div class="permiso-card-inner">
+                <!-- Frente de la tarjeta -->
+                <div class="permiso-card-front">
+                    <div class="permiso-header">
+                        <div class="permiso-numero">\${permiso.numero_pt}</div>
+                        <div class="permiso-estado \${estadoClass}">\${estadoTexto}</div>
                     </div>
-                </div>
-            \` : ''}
-            
-            \${permiso.actividades_detalle && permiso.actividades_detalle.length > 0 ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Actividades</div>
-                        <div class="permiso-info-value" style="font-size: 12px;">
-                            \${permiso.actividades_detalle.map(act => \`
-                                <div style="margin: 2px 0;">
-                                    • \${act.actividad_nombre} \${act.actividad_tipo ? \`(\${act.actividad_tipo})\` : ''}
-                                    \${act.riesgo_asociado ? \`<br><span style="color: var(--text-secondary); margin-left: 12px;">Riesgo: \${act.riesgo_asociado}</span>\` : ''}
-                                </div>
-                            \`).join('')}
+                    
+                    <div class="permiso-info">
+                        <div class="permiso-info-item">
+                            <div class="permiso-info-label">Planta</div>
+                            <div class="permiso-info-value">\${permiso.planta_nombre}</div>
+                        </div>
+                        <div class="permiso-info-item">
+                            <div class="permiso-info-label">Aerogenerador</div>
+                            <div class="permiso-info-value">\${permiso.aerogenerador_nombre || 'N/A'}</div>
+                        </div>
+                        <div class="permiso-info-item">
+                            <div class="permiso-info-label">Jefe de Faena</div>
+                            <div class="permiso-info-value">\${permiso.jefe_faena_nombre}</div>
+                        </div>
+                        <div class="permiso-info-item">
+                            <div class="permiso-info-label">Fecha Creación</div>
+                            <div class="permiso-info-value">\${formatDate(permiso.fecha_creacion)}</div>
                         </div>
                     </div>
-                </div>
-            \` : ''}
-            
-            \${permiso.materiales_detalle && permiso.materiales_detalle.length > 0 ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Materiales/Herramientas</div>
-                        <div class="permiso-info-value" style="font-size: 12px;">
-                            \${permiso.materiales_detalle.map(mat => \`
-                                <span style="margin-right: 10px;">• \${mat.material_nombre} (\${mat.material_cantidad} \${mat.material_unidad || ''})</span>
-                            \`).join('')}
+                    
+                    <div class="permiso-info">
+                        <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                            <div class="permiso-info-label">Descripción</div>
+                            <div class="permiso-info-value">\${permiso.descripcion}</div>
                         </div>
                     </div>
-                </div>
-            \` : ''}
-            
-            \${permiso.matriz_riesgos_detalle && permiso.matriz_riesgos_detalle.length > 0 ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Matriz de Riesgos</div>
-                        <div class="permiso-info-value" style="font-size: 12px;">
-                            \${permiso.matriz_riesgos_detalle.map(riesgo => \`
-                                <div style="margin: 2px 0;">
-                                    • \${riesgo.riesgo_descripcion}
-                                    \${riesgo.control_medida ? \`<br><span style="color: var(--success); margin-left: 12px;">Control: \${riesgo.control_medida}</span>\` : ''}
-                                </div>
-                            \`).join('')}
+                    
+                    \${permiso.personal_asignado ? \`
+                        <div class="permiso-info">
+                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                <div class="permiso-info-label">Personal Asignado</div>
+                                <div class="permiso-info-value">\${permiso.personal_asignado}</div>
+                            </div>
                         </div>
+                    \` : ''}
+                    
+                    <div class="permiso-actions">
+                        \${permiso.estado === 'CREADO' && esEnel ? 
+                            \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
+                        
+                        \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
+                            \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
+                        
+                        \${(permiso.estado === 'CERRADO' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
+                            \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
+                        
+                        \${permiso.estado === 'CERRADO' ? 
+                            \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
+                            (permiso.estado === 'CREADO' && !esEnel ? 
+                                \`<span style="color: var(--warning); font-size: 12px; font-weight: 500;">⏳ Pendiente de aprobación</span>\` : '')
+                        }
                     </div>
                 </div>
-            \` : ''}
-            
-            \${permiso.observaciones_cierre ? \`
-                <div class="permiso-info">
-                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                        <div class="permiso-info-label">Observaciones de Cierre</div>
-                        <div class="permiso-info-value">\${permiso.observaciones_cierre}</div>
-                    </div>
-                </div>
-            \` : ''}
-            
-            <div class="permiso-actions">
-                \${permiso.estado === 'CREADO' && esEnel ? 
-                    \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
                 
-                \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
-                    \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
-                
-                \${permiso.estado === 'CERRADO' ? 
-                    \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
-                    (permiso.estado === 'CREADO' && !esEnel ? 
-                        \`<span style="color: var(--warning); font-size: 12px; font-weight: 500;">⏳ Pendiente de aprobación</span>\` : '')
-                }
+                <!-- Reverso de la tarjeta -->
+                <div class="permiso-card-back">
+                    <div class="permiso-header">
+                        <div class="permiso-numero">\${permiso.numero_pt} - Detalles</div>
+                        <button class="btn-flip" onclick="flipCard(\${permiso.id})">← Volver</button>
+                    </div>
+                    
+                    \${permiso.actividades_detalle && permiso.actividades_detalle.length > 0 ? \`
+                        <div class="permiso-info">
+                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                <div class="permiso-info-label">Actividades Realizadas</div>
+                                <div class="permiso-info-value" style="font-size: 13px;">
+                                    \${permiso.actividades_detalle.map(act => \`
+                                        <div style="margin: 4px 0; padding: 4px 0; border-bottom: 1px solid var(--border-color);">
+                                            • \${act.actividad_nombre} 
+                                            \${act.tipo_actividad ? \`<span style="color: var(--accent-color); font-size: 11px;">(\${act.tipo_actividad})</span>\` : ''}
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    \` : ''}
+                    
+                    \${permiso.materiales_detalle && permiso.materiales_detalle.length > 0 ? \`
+                        <div class="permiso-info">
+                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                <div class="permiso-info-label">Materiales/Herramientas Utilizados</div>
+                                <div class="permiso-info-value" style="font-size: 13px;">
+                                    \${permiso.materiales_detalle.map(mat => \`
+                                        <div style="margin: 4px 0;">
+                                            • \${mat.material_nombre} 
+                                            <span style="color: var(--text-secondary);">(\${mat.material_cantidad} \${mat.material_unidad || 'unidades'})</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    \` : ''}
+                    
+                    \${permiso.matriz_riesgos_detalle && permiso.matriz_riesgos_detalle.length > 0 ? \`
+                        <div class="permiso-info">
+                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                <div class="permiso-info-label">Matriz de Riesgos Aplicada</div>
+                                <div class="permiso-info-value" style="font-size: 13px;">
+                                    \${permiso.matriz_riesgos_detalle.map(riesgo => \`
+                                        <div style="margin: 6px 0; padding: 6px; background: var(--bg-secondary); border-radius: 4px;">
+                                            <div style="color: var(--danger-color); font-weight: 500;">⚠ \${riesgo.riesgo_descripcion || 'Riesgo identificado'}</div>
+                                            \${riesgo.medida_control ? \`<div style="color: var(--success-color); margin-top: 4px; margin-left: 20px;">✓ Control: \${riesgo.medida_control}</div>\` : ''}
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    \` : ''}
+                    
+                    \${permiso.estado === 'CERRADO' ? \`
+                        <div class="permiso-info" style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-top: 12px;">
+                            <h4 style="margin-bottom: 8px; color: var(--primary-color);">Información de Cierre</h4>
+                            
+                            \${permiso.fecha_inicio_trabajos ? \`
+                                <div class="permiso-info-item">
+                                    <div class="permiso-info-label">Inicio de Trabajos</div>
+                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_inicio_trabajos)}</div>
+                                </div>
+                            \` : ''}
+                            
+                            \${permiso.fecha_fin_trabajos ? \`
+                                <div class="permiso-info-item">
+                                    <div class="permiso-info-label">Fin de Trabajos</div>
+                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_fin_trabajos)}</div>
+                                </div>
+                            \` : ''}
+                            
+                            \${permiso.fecha_parada_turbina ? \`
+                                <div class="permiso-info-item">
+                                    <div class="permiso-info-label">Parada de Turbina</div>
+                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_parada_turbina)}</div>
+                                </div>
+                            \` : ''}
+                            
+                            \${permiso.fecha_puesta_marcha_turbina ? \`
+                                <div class="permiso-info-item">
+                                    <div class="permiso-info-label">Puesta en Marcha</div>
+                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_puesta_marcha_turbina)}</div>
+                                </div>
+                            \` : ''}
+                            
+                            \${permiso.observaciones_cierre ? \`
+                                <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 8px;">
+                                    <div class="permiso-info-label">Observaciones de Cierre</div>
+                                    <div class="permiso-info-value">\${permiso.observaciones_cierre}</div>
+                                </div>
+                            \` : ''}
+                            
+                            <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 8px;">
+                                <div class="permiso-info-label">Cerrado por</div>
+                                <div class="permiso-info-value">\${permiso.usuario_cierre || 'N/A'} - \${formatDate(permiso.fecha_cierre)}</div>
+                            </div>
+                        </div>
+                    \` : \`
+                        <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            <p>No hay información de cierre disponible</p>
+                            <p style="font-size: 12px; margin-top: 8px;">El permiso aún no ha sido cerrado</p>
+                        </div>
+                    \`}
+                </div>
             </div>
         \`;
         
-        return card;
+        cardContainer.appendChild(card);
+        return cardContainer;
     }
     
     function filterPermisos() {
@@ -1012,6 +1079,14 @@ export function getWebAppScript() {
             const card = createPermisoCard(permiso);
             container.appendChild(card);
         });
+    }
+    
+    // Función para voltear las tarjetas
+    window.flipCard = function(permisoId) {
+        const card = document.querySelector(\`.permiso-card[data-permiso-id="\${permisoId}"]\`);
+        if (card) {
+            card.classList.toggle('flipped');
+        }
     }
     
     function clearSearch() {

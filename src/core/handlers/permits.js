@@ -216,32 +216,40 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
     
     // Para cada permiso, obtener actividades y materiales
     for (let permiso of permisos) {
-      // Obtener actividades
+      // Obtener actividades (usando nombres de columnas correctos según la estructura real)
       const actividadesResult = await env.DB_PERMISOS.prepare(`
-        SELECT actividad_nombre, actividad_tipo, riesgo_asociado, medidas_control
+        SELECT actividad_nombre, tipo_actividad
         FROM permiso_actividades
         WHERE permiso_id = ?
       `).bind(permiso.id).all();
       
       permiso.actividades_detalle = actividadesResult.results || [];
       
-      // Obtener materiales
-      const materialesResult = await env.DB_PERMISOS.prepare(`
-        SELECT material_nombre, material_cantidad, material_unidad
-        FROM permiso_materiales
-        WHERE permiso_id = ?
-      `).bind(permiso.id).all();
-      
-      permiso.materiales_detalle = materialesResult.results || [];
+      // Obtener materiales - estas tablas pueden no existir aún
+      try {
+        const materialesResult = await env.DB_PERMISOS.prepare(`
+          SELECT material_nombre, material_cantidad, material_unidad
+          FROM permiso_materiales
+          WHERE permiso_id = ?
+        `).bind(permiso.id).all();
+        
+        permiso.materiales_detalle = materialesResult.results || [];
+      } catch (e) {
+        permiso.materiales_detalle = [];
+      }
       
       // Obtener matriz de riesgos
-      const matrizResult = await env.DB_PERMISOS.prepare(`
-        SELECT riesgo_descripcion, control_medida
-        FROM permiso_matriz_riesgos
-        WHERE permiso_id = ?
-      `).bind(permiso.id).all();
-      
-      permiso.matriz_riesgos_detalle = matrizResult.results || [];
+      try {
+        const matrizResult = await env.DB_PERMISOS.prepare(`
+          SELECT riesgo_descripcion, medida_control
+          FROM permiso_matriz_riesgos
+          WHERE permiso_id = ?
+        `).bind(permiso.id).all();
+        
+        permiso.matriz_riesgos_detalle = matrizResult.results || [];
+      } catch (e) {
+        permiso.matriz_riesgos_detalle = [];
+      }
     }
     
     return new Response(JSON.stringify({ 
