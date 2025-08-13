@@ -937,104 +937,164 @@ export function getWebAppScript() {
                         <button class="btn-flip" onclick="flipCard(\${permiso.id})">← Volver</button>
                     </div>
                     
-                    \${permiso.actividades_detalle && permiso.actividades_detalle.length > 0 ? \`
-                        <div class="permiso-info">
-                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                                <div class="permiso-info-label">Actividades Realizadas</div>
-                                <div class="permiso-info-value" style="font-size: 13px;">
-                                    \${permiso.actividades_detalle.map(act => \`
-                                        <div style="margin: 4px 0; padding: 4px 0; border-bottom: 1px solid var(--border-color);">
-                                            • \${act.actividad_nombre} 
-                                            \${act.tipo_actividad ? \`<span style="color: var(--accent-color); font-size: 11px;">(\${act.tipo_actividad})</span>\` : ''}
-                                        </div>
-                                    \`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    \` : ''}
+                    <!-- Pestañas internas -->
+                    <div class="card-tabs">
+                        <button class="card-tab active" onclick="showCardTab(\${permiso.id}, 'actividades')">Actividades</button>
+                        <button class="card-tab" onclick="showCardTab(\${permiso.id}, 'tiempos')">Tiempos</button>
+                        <button class="card-tab" onclick="showCardTab(\${permiso.id}, 'materiales')">Materiales</button>
+                        <button class="card-tab" onclick="showCardTab(\${permiso.id}, 'cierre')">Cierre</button>
+                    </div>
                     
-                    \${permiso.materiales_detalle && permiso.materiales_detalle.length > 0 ? \`
-                        <div class="permiso-info">
-                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                                <div class="permiso-info-label">Materiales/Herramientas Utilizados</div>
-                                <div class="permiso-info-value" style="font-size: 13px;">
-                                    \${permiso.materiales_detalle.map(mat => \`
-                                        <div style="margin: 4px 0;">
-                                            • \${mat.material_nombre} 
-                                            <span style="color: var(--text-secondary);">(\${mat.material_cantidad} \${mat.material_unidad || 'unidades'})</span>
+                    <!-- Contenido de las pestañas -->
+                    <div class="card-tab-content" data-permiso-id="\${permiso.id}">
+                        
+                        <!-- Tab: Actividades -->
+                        <div class="tab-pane active" data-tab="actividades">
+                            \${permiso.actividades_detalle && permiso.actividades_detalle.length > 0 ? \`
+                                <div class="permiso-info">
+                                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                        <div class="permiso-info-label">Actividades Realizadas</div>
+                                        <div class="permiso-info-value" style="font-size: 13px;">
+                                            \${permiso.actividades_detalle.map(act => \`
+                                                <div style="margin: 6px 0; padding: 8px; background: var(--bg-secondary); border-radius: 4px;">
+                                                    <strong>• \${act.actividad_nombre}</strong>
+                                                    \${act.tipo_actividad ? \`<span style="color: var(--accent-color); font-size: 11px; margin-left: 8px;">(\${act.tipo_actividad})</span>\` : ''}
+                                                </div>
+                                            \`).join('')}
                                         </div>
-                                    \`).join('')}
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    \` : ''}
-                    
-                    \${permiso.matriz_riesgos_detalle && permiso.matriz_riesgos_detalle.length > 0 ? \`
-                        <div class="permiso-info">
-                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
-                                <div class="permiso-info-label">Matriz de Riesgos Aplicada</div>
-                                <div class="permiso-info-value" style="font-size: 13px;">
-                                    \${permiso.matriz_riesgos_detalle.map(riesgo => \`
-                                        <div style="margin: 6px 0; padding: 6px; background: var(--bg-secondary); border-radius: 4px;">
-                                            <div style="color: var(--danger-color); font-weight: 500;">⚠ \${riesgo.riesgo_descripcion || 'Riesgo identificado'}</div>
-                                            \${riesgo.medida_control ? \`<div style="color: var(--success-color); margin-top: 4px; margin-left: 20px;">✓ Control: \${riesgo.medida_control}</div>\` : ''}
+                                \${permiso.matriz_riesgos_detalle && permiso.matriz_riesgos_detalle.length > 0 ? \`
+                                    <div class="permiso-info" style="margin-top: 12px;">
+                                        <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                            <div class="permiso-info-label">Matriz de Riesgos</div>
+                                            <div class="permiso-info-value" style="font-size: 12px;">
+                                                \${permiso.matriz_riesgos_detalle.map(riesgo => \`
+                                                    <div style="margin: 6px 0; padding: 8px; background: #fff3cd; border-left: 3px solid var(--warning-color); border-radius: 4px;">
+                                                        <div style="color: var(--danger-color); font-weight: 500;">⚠ \${riesgo.riesgo_descripcion || 'Riesgo'}</div>
+                                                        \${riesgo.medida_control ? \`<div style="color: var(--success-color); margin-top: 4px;">✓ \${riesgo.medida_control}</div>\` : ''}
+                                                    </div>
+                                                \`).join('')}
+                                            </div>
                                         </div>
-                                    \`).join('')}
+                                    </div>
+                                \` : ''}
+                            \` : \`
+                                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                    <p>No hay actividades registradas</p>
                                 </div>
+                            \`}
+                        </div>
+                        
+                        <!-- Tab: Tiempos -->
+                        <div class="tab-pane" data-tab="tiempos" style="display: none;">
+                            <div class="permiso-info">
+                                <h4 style="margin-bottom: 16px; color: var(--primary-color);">Horarios de Trabajo</h4>
+                                
+                                <div class="timeline-grid">
+                                    \${permiso.fecha_inicio_trabajos ? \`
+                                        <div class="timeline-item">
+                                            <div class="timeline-icon">🛠️</div>
+                                            <div class="timeline-content">
+                                                <div class="timeline-label">Inicio de Trabajos</div>
+                                                <div class="timeline-value">\${formatDate(permiso.fecha_inicio_trabajos)}</div>
+                                            </div>
+                                        </div>
+                                    \` : ''}
+                                    
+                                    \${permiso.fecha_fin_trabajos ? \`
+                                        <div class="timeline-item">
+                                            <div class="timeline-icon">✅</div>
+                                            <div class="timeline-content">
+                                                <div class="timeline-label">Fin de Trabajos</div>
+                                                <div class="timeline-value">\${formatDate(permiso.fecha_fin_trabajos)}</div>
+                                            </div>
+                                        </div>
+                                    \` : ''}
+                                    
+                                    \${permiso.fecha_parada_turbina ? \`
+                                        <div class="timeline-item">
+                                            <div class="timeline-icon">⏸️</div>
+                                            <div class="timeline-content">
+                                                <div class="timeline-label">Parada de Turbina</div>
+                                                <div class="timeline-value">\${formatDate(permiso.fecha_parada_turbina)}</div>
+                                            </div>
+                                        </div>
+                                    \` : ''}
+                                    
+                                    \${permiso.fecha_puesta_marcha_turbina ? \`
+                                        <div class="timeline-item">
+                                            <div class="timeline-icon">▶️</div>
+                                            <div class="timeline-content">
+                                                <div class="timeline-label">Puesta en Marcha</div>
+                                                <div class="timeline-value">\${formatDate(permiso.fecha_puesta_marcha_turbina)}</div>
+                                            </div>
+                                        </div>
+                                    \` : ''}
+                                </div>
+                                
+                                \${!permiso.fecha_inicio_trabajos && !permiso.fecha_fin_trabajos && !permiso.fecha_parada_turbina && !permiso.fecha_puesta_marcha_turbina ? \`
+                                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                        <p>No hay información de tiempos disponible</p>
+                                    </div>
+                                \` : ''}
                             </div>
                         </div>
-                    \` : ''}
-                    
-                    \${permiso.estado === 'CERRADO' ? \`
-                        <div class="permiso-info" style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-top: 12px;">
-                            <h4 style="margin-bottom: 8px; color: var(--primary-color);">Información de Cierre</h4>
-                            
-                            \${permiso.fecha_inicio_trabajos ? \`
-                                <div class="permiso-info-item">
-                                    <div class="permiso-info-label">Inicio de Trabajos</div>
-                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_inicio_trabajos)}</div>
+                        
+                        <!-- Tab: Materiales -->
+                        <div class="tab-pane" data-tab="materiales" style="display: none;">
+                            \${permiso.materiales_detalle && permiso.materiales_detalle.length > 0 ? \`
+                                <div class="permiso-info">
+                                    <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                        <div class="permiso-info-label">Materiales y Herramientas Utilizados</div>
+                                        <div class="materials-grid">
+                                            \${permiso.materiales_detalle.map(mat => \`
+                                                <div class="material-card">
+                                                    <div class="material-name">\${mat.material_nombre}</div>
+                                                    <div class="material-quantity">\${mat.material_cantidad} \${mat.material_unidad || 'unidades'}</div>
+                                                </div>
+                                            \`).join('')}
+                                        </div>
+                                    </div>
                                 </div>
-                            \` : ''}
-                            
-                            \${permiso.fecha_fin_trabajos ? \`
-                                <div class="permiso-info-item">
-                                    <div class="permiso-info-label">Fin de Trabajos</div>
-                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_fin_trabajos)}</div>
+                            \` : \`
+                                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                    <p>No hay materiales registrados</p>
                                 </div>
-                            \` : ''}
-                            
-                            \${permiso.fecha_parada_turbina ? \`
-                                <div class="permiso-info-item">
-                                    <div class="permiso-info-label">Parada de Turbina</div>
-                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_parada_turbina)}</div>
-                                </div>
-                            \` : ''}
-                            
-                            \${permiso.fecha_puesta_marcha_turbina ? \`
-                                <div class="permiso-info-item">
-                                    <div class="permiso-info-label">Puesta en Marcha</div>
-                                    <div class="permiso-info-value">\${formatDate(permiso.fecha_puesta_marcha_turbina)}</div>
-                                </div>
-                            \` : ''}
-                            
-                            \${permiso.observaciones_cierre ? \`
-                                <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 8px;">
-                                    <div class="permiso-info-label">Observaciones de Cierre</div>
-                                    <div class="permiso-info-value">\${permiso.observaciones_cierre}</div>
-                                </div>
-                            \` : ''}
-                            
-                            <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 8px;">
-                                <div class="permiso-info-label">Cerrado por</div>
-                                <div class="permiso-info-value">\${permiso.usuario_cierre || 'N/A'} - \${formatDate(permiso.fecha_cierre)}</div>
-                            </div>
+                            \`}
                         </div>
-                    \` : \`
-                        <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
-                            <p>No hay información de cierre disponible</p>
-                            <p style="font-size: 12px; margin-top: 8px;">El permiso aún no ha sido cerrado</p>
+                        
+                        <!-- Tab: Cierre -->
+                        <div class="tab-pane" data-tab="cierre" style="display: none;">
+                            \${permiso.estado === 'CERRADO' ? \`
+                                <div class="permiso-info">
+                                    <h4 style="margin-bottom: 16px; color: var(--primary-color);">Información de Cierre</h4>
+                                    
+                                    <div class="cierre-info-box">
+                                        \${permiso.observaciones_cierre ? \`
+                                            <div class="permiso-info-item" style="grid-column: 1 / -1;">
+                                                <div class="permiso-info-label">Observaciones</div>
+                                                <div class="permiso-info-value" style="background: var(--bg-secondary); padding: 12px; border-radius: 4px; margin-top: 8px;">\${permiso.observaciones_cierre}</div>
+                                            </div>
+                                        \` : ''}
+                                        
+                                        <div class="permiso-info-item" style="grid-column: 1 / -1; margin-top: 16px;">
+                                            <div class="permiso-info-label">Responsable del Cierre</div>
+                                            <div class="permiso-info-value">
+                                                <strong>\${permiso.usuario_cierre || 'N/A'}</strong><br>
+                                                <span style="color: var(--text-secondary); font-size: 12px;">Fecha: \${formatDate(permiso.fecha_cierre)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            \` : \`
+                                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                    <p>🔓 Permiso aún activo</p>
+                                    <p style="font-size: 12px; margin-top: 8px;">La información de cierre estará disponible cuando se complete el permiso</p>
+                                </div>
+                            \`}
                         </div>
-                    \`}
+                    </div>
                 </div>
             </div>
         \`;
@@ -1086,7 +1146,39 @@ export function getWebAppScript() {
         const card = document.querySelector(\`.permiso-card[data-permiso-id="\${permisoId}"]\`);
         if (card) {
             card.classList.toggle('flipped');
+            // Resetear a la primera pestaña cuando se voltea
+            const tabs = card.querySelectorAll('.card-tab');
+            const panes = card.querySelectorAll('.tab-pane');
+            tabs.forEach(t => t.classList.remove('active'));
+            panes.forEach(p => p.style.display = 'none');
+            if (tabs[0]) tabs[0].classList.add('active');
+            if (panes[0]) {
+                panes[0].style.display = 'block';
+            }
         }
+    }
+    
+    // Función para cambiar pestañas dentro de la card
+    window.showCardTab = function(permisoId, tabName) {
+        const card = document.querySelector(\`.permiso-card[data-permiso-id="\${permisoId}"]\`);
+        if (!card) return;
+        
+        // Actualizar botones de pestañas
+        const tabs = card.querySelectorAll('.card-tab');
+        tabs.forEach(tab => {
+            tab.classList.remove('active');
+        });
+        event.target.classList.add('active');
+        
+        // Mostrar/ocultar contenido
+        const panes = card.querySelectorAll('.tab-pane');
+        panes.forEach(pane => {
+            if (pane.dataset.tab === tabName) {
+                pane.style.display = 'block';
+            } else {
+                pane.style.display = 'none';
+            }
+        });
     }
     
     function clearSearch() {

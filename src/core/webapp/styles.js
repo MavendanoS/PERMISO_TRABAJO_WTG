@@ -508,6 +508,131 @@ export function getStyles() {
         background: var(--primary-color);
     }
     
+    /* Pestañas dentro de las cards */
+    .card-tabs {
+        display: flex;
+        border-bottom: 2px solid var(--border-color);
+        margin: 16px 0;
+        gap: 2px;
+    }
+    
+    .card-tab {
+        flex: 1;
+        padding: 8px 12px;
+        background: var(--bg-secondary);
+        border: none;
+        border-radius: 4px 4px 0 0;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        transition: all 0.2s ease;
+    }
+    
+    .card-tab:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+    
+    .card-tab.active {
+        background: var(--accent-color);
+        color: white;
+        border-bottom: 2px solid var(--accent-color);
+    }
+    
+    .card-tab-content {
+        min-height: 200px;
+        max-height: 350px;
+        overflow-y: auto;
+    }
+    
+    .tab-pane {
+        animation: fadeIn 0.3s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Timeline para tiempos */
+    .timeline-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .timeline-item {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        background: var(--bg-secondary);
+        border-radius: var(--radius-md);
+        border-left: 4px solid var(--accent-color);
+    }
+    
+    .timeline-icon {
+        font-size: 18px;
+        margin-right: 12px;
+        width: 30px;
+        text-align: center;
+    }
+    
+    .timeline-content {
+        flex: 1;
+    }
+    
+    .timeline-label {
+        font-size: 11px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 2px;
+    }
+    
+    .timeline-value {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    
+    /* Grid para materiales */
+    .materials-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+    }
+    
+    .material-card {
+        background: var(--bg-secondary);
+        padding: 12px;
+        border-radius: var(--radius-md);
+        border-left: 4px solid var(--success-color);
+    }
+    
+    .material-name {
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+    }
+    
+    .material-quantity {
+        font-size: 12px;
+        color: var(--text-secondary);
+        background: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        display: inline-block;
+    }
+    
+    /* Información de cierre */
+    .cierre-info-box {
+        background: var(--bg-secondary);
+        padding: 16px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-color);
+    }
+    
     .permiso-header {
         display: flex;
         justify-content: space-between;
