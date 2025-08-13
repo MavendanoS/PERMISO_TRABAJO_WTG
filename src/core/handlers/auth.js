@@ -259,4 +259,115 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
   }
 }
 
-export default { handleLogin, handleChangePassword };
+export async function handleFixPasswords(request, corsHeaders, env) {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  try {
+    // Obtener usuarios con contraseñas no hasheadas
+    const usuarios = await env.DB_MASTER.prepare(`
+      SELECT id, usuario, email, password_hash, password_temporal
+      FROM usuarios
+    `).all();
+
+    const toUpdate = [];
+    let updated = 0;
+
+    for (const user of usuarios.results) {
+      let needsUpdate = false;
+      const hash = user.password_hash || '';
+      
+      // Detectar si es contraseña en texto plano
+      if (!hash.startsWith('pbkdf2:') &&           // No es formato moderno
+          !hash.includes(':') &&                   // No es formato legacy salt:hash
+          hash.length < 40) {                      // No es hash SHA-1 o SHA-256
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate && user.password_temporal !== 1) {
+        await env.DB_MASTER.prepare(`
+          UPDATE usuarios SET password_temporal = 1 WHERE id = ?
+        `).bind(user.id).run();
+        
+        toUpdate.push({
+          id: user.id,
+          usuario: user.usuario,
+          email: user.email,
+          hash_length: hash.length
+        });
+        updated++;
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: `${updated} usuarios marcados como contraseña temporal`,
+      usuarios_actualizados: toUpdate,
+      total_usuarios: usuarios.results.length
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Error en fix-passwords:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handleListUsers(request, corsHeaders, env) {
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  try {
+    const usuarios = await env.DB_MASTER.prepare(`
+      SELECT 
+        id, usuario, email, rol,
+        LENGTH(password_hash) as hash_length,
+        password_temporal,
+        CASE 
+          WHEN password_hash LIKE 'pbkdf2:%' THEN 'Moderna PBKDF2'
+          WHEN password_hash LIKE '%:%' THEN 'Legacy salt:hash'
+          WHEN LENGTH(password_hash) = 64 THEN 'SHA-256 hash'
+          WHEN LENGTH(password_hash) = 40 THEN 'SHA-1 hash'
+          ELSE 'Texto plano (temporal)'
+        END as tipo_password
+      FROM usuarios
+      ORDER BY password_temporal DESC, usuario
+      LIMIT 10
+    `).all();
+
+    return new Response(JSON.stringify({
+      success: true,
+      usuarios: usuarios.results,
+      total_shown: usuarios.results.length
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Error listando usuarios:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export default { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers };

@@ -927,11 +927,11 @@ export function getWebAppScript() {
                                 <button class="btn btn-success btn-small dropdown-toggle" onclick="toggleExportMenu(\${permiso.id})">
                                     📁 EXPORTAR ▼
                                 </button>
-                                <div class="dropdown-menu" id="exportMenu_\${permiso.id}" style="display: none;">
-                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, '\${permiso.numero_pt}', 'excel')">
+                                <div class="dropdown-menu" id="exportMenu-\${permiso.id}" style="display: none;">
+                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, 'excel')">
                                         📊 Excel (para SAP)
                                     </a>
-                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, '\${permiso.numero_pt}', 'pdf')">
+                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, 'pdf')">
                                         📄 PDF (auditoría)
                                     </a>
                                 </div>
