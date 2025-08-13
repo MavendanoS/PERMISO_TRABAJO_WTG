@@ -335,21 +335,21 @@ export function getWebAppScript() {
         console.log('Cargando datos de la aplicación...');
         
         try {
-            const [parques, personal, supervisores, actividades] = await Promise.all([
+            const [parques, personal, actividades] = await Promise.all([
                 ClientSecurity.makeSecureRequest('/parques'),
                 ClientSecurity.makeSecureRequest('/personal'),
-                ClientSecurity.makeSecureRequest('/supervisores'),
                 ClientSecurity.makeSecureRequest('/actividades')
             ]);
             
             // Los datos ahora vienen directamente como arrays sin properties
             parquesData = parques.results || [];
             personalData = personal.results || [];
-            supervisoresData = supervisores.results || [];
             actividadesData = actividades.results || [];
+            // supervisoresData se cargará cuando se seleccione una planta
+            supervisoresData = [];
             
             populateParques();
-            populateSupervisores();
+            // populateSupervisores se llamará cuando se seleccione una planta
             populateActividades();
             
             await loadPermisos();
@@ -383,21 +383,50 @@ export function getWebAppScript() {
         });
     }
     
-    function populateSupervisores() {
-        const jefeFaenaSelect = document.getElementById('jefeFaena');
+    async function populateSupervisores(plantaNombre) {
         const supervisorParqueSelect = document.getElementById('supervisorParque');
         
-        supervisorParqueSelect.innerHTML = '<option value="">Seleccionar supervisor de parque...</option>';
+        supervisorParqueSelect.innerHTML = '<option value="">Seleccionar supervisor Enel...</option>';
         
-        supervisoresData.forEach(supervisor => {
-            const option = document.createElement('option');
-            option.value = supervisor.nombre;
-            option.textContent = supervisor.nombre;
-            option.dataset.id = supervisor.id;
-            option.dataset.cargo = supervisor.cargo || '';
+        if (!plantaNombre) {
+            supervisoresData = [];
+            return;
+        }
+        
+        try {
+            // Cargar supervisores filtrados por parque
+            const response = await ClientSecurity.makeSecureRequest(
+                '/supervisores?parque=' + encodeURIComponent(plantaNombre)
+            );
+            supervisoresData = response.results || [];
             
+            if (supervisoresData.length === 0) {
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "No hay supervisores Enel asignados a este parque";
+                option.disabled = true;
+                supervisorParqueSelect.appendChild(option);
+            } else {
+                supervisoresData.forEach(supervisor => {
+                    const option = document.createElement('option');
+                    option.value = supervisor.nombre;
+                    option.textContent = supervisor.nombre;
+                    option.dataset.id = supervisor.id;
+                    option.dataset.cargo = supervisor.cargo || '';
+                    option.dataset.telefono = supervisor.telefono || '';
+                    option.dataset.rut = supervisor.rut || '';
+                    
+                    supervisorParqueSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error cargando supervisores:', error);
+            const option = document.createElement('option');
+            option.value = "";
+            option.textContent = "Error al cargar supervisores";
+            option.disabled = true;
             supervisorParqueSelect.appendChild(option);
-        });
+        }
     }
     
     function populateActividades() {
@@ -433,11 +462,16 @@ export function getWebAppScript() {
             document.getElementById('aerogenerador').innerHTML = '<option value="">Seleccionar aerogenerador...</option>';
             document.getElementById('personalDisponible').innerHTML = '<div class="loading">Seleccione una planta primero</div>';
             jefeFaenaSelect.innerHTML = '<option value="">Seleccionar jefe de faena...</option>';  // ← IMPORTANTE
+            document.getElementById('supervisorParque').innerHTML = '<option value="">Seleccionar supervisor Enel...</option>';
+            supervisoresData = [];
             return;
         }
         
         // Cargar aerogeneradores
         await loadAerogeneradores(plantaNombre);
+        
+        // Cargar supervisores Enel del parque
+        await populateSupervisores(plantaNombre);
         
         // Cargar personal del parque
         await loadPersonalByParque(plantaNombre);

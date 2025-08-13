@@ -123,18 +123,56 @@ export async function handlePersonalByParque(request, corsHeaders, env) {
 
 export async function handleSupervisores(request, corsHeaders, env) {
   try {
-    // Ahora filtra usuarios con rol Supervisor Enel de tabla unificada
+    const url = new URL(request.url);
+    const parqueNombre = InputSanitizer.sanitizeString(url.searchParams.get('parque'));
+    
+    // Obtener todos los usuarios con rol Supervisor Enel activos
     const result = await env.DB_MASTER.prepare(`
       SELECT id, usuario as nombre, email, cargo, telefono, rut,
-             parques_autorizados as plantas_asignadas, estado
+             parques_autorizados, estado
       FROM usuarios
       WHERE rol = 'Supervisor Enel'
       AND estado = 'Activo'
       ORDER BY usuario ASC
     `).all();
     
+    let filteredResults = result.results || [];
+    
+    // Si se especifica un parque, filtrar supervisores que lo tengan autorizado
+    if (parqueNombre && filteredResults.length > 0) {
+      filteredResults = filteredResults.filter(supervisor => {
+        if (!supervisor.parques_autorizados) return false;
+        
+        try {
+          // Intentar parsear como JSON array
+          const parques = JSON.parse(supervisor.parques_autorizados);
+          if (Array.isArray(parques)) {
+            return parques.some(p => {
+              const parqueNorm = p.toLowerCase().trim();
+              const busquedaNorm = parqueNombre.toLowerCase().trim();
+              return parqueNorm === busquedaNorm || 
+                     parqueNorm.includes(busquedaNorm) || 
+                     busquedaNorm.includes(parqueNorm);
+            });
+          }
+        } catch (e) {
+          // Si no es JSON, intentar como texto separado por comas
+          const parques = supervisor.parques_autorizados.split(',').map(p => p.trim());
+          return parques.some(p => {
+            const parqueNorm = p.toLowerCase().trim();
+            const busquedaNorm = parqueNombre.toLowerCase().trim();
+            return parqueNorm === busquedaNorm || 
+                   parqueNorm.includes(busquedaNorm) || 
+                   busquedaNorm.includes(parqueNorm);
+          });
+        }
+        
+        return false;
+      });
+    }
+    
     return new Response(JSON.stringify({
-      results: result.results || [],
+      results: filteredResults,
       has_more: false
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
