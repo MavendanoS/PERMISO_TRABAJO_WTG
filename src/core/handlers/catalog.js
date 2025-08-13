@@ -72,11 +72,44 @@ export async function handleActividades(request, corsHeaders, env) {
   try {
     const result = await env.DB_MASTER.prepare(`
       SELECT * FROM actividades
-      ORDER BY nombre ASC
     `).all();
     
+    // Definir el orden prioritario de las actividades rutinarias
+    const ordenPrioridad = [
+      'Tránsito al lugar de trabajo',
+      'Ingreso al aerogenerador', 
+      'Uso de elevador',
+      'Trabajos en Ground o Foso',
+      'Trabajos en Secciones de Torre',
+      'Trabajos en Nacelle'
+    ];
+    
+    // Ordenar las actividades según prioridad
+    const actividadesOrdenadas = (result.results || []).sort((a, b) => {
+      const indexA = ordenPrioridad.indexOf(a.nombre);
+      const indexB = ordenPrioridad.indexOf(b.nombre);
+      
+      // Si ambos están en la lista de prioridad, ordenar por índice
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      
+      // Si solo A está en prioridad, A va primero
+      if (indexA !== -1 && indexB === -1) {
+        return -1;
+      }
+      
+      // Si solo B está en prioridad, B va primero
+      if (indexA === -1 && indexB !== -1) {
+        return 1;
+      }
+      
+      // Si ninguno está en prioridad, ordenar alfabéticamente
+      return a.nombre.localeCompare(b.nombre);
+    });
+    
     return new Response(JSON.stringify({
-      results: result.results || [],
+      results: actividadesOrdenadas,
       has_more: false
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }

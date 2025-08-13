@@ -6,7 +6,7 @@ import generateTomaConocimientoPDF from './pdf.js';
 export async function handlePermisos(request, corsHeaders, env, currentUser, services) {
   const { auditLogger } = services;
   
-  if (request.method === 'POST') {
+  if (request.method === 'POST' || request.method === 'PUT') {
     const rawData = await request.json();
     const permisoData = InputSanitizer.sanitizeObject(rawData);
     
@@ -21,6 +21,11 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
     }
     
     try {
+      // Si es PUT (edición), manejar actualización
+      if (request.method === 'PUT') {
+        return await handleUpdatePermiso(permisoData, env, currentUser, services, corsHeaders);
+      }
+      
       // TEMPORAL: Comentar validación para debugging
       /*
       const esEnel = currentUser?.esEnel || false;
@@ -59,8 +64,9 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
           aerogenerador_id, aerogenerador_nombre, descripcion, 
           jefe_faena_id, jefe_faena_nombre, supervisor_parque_id, 
           supervisor_parque_nombre, tipo_mantenimiento, tipo_mantenimiento_otros,
-          usuario_creador, fecha_inicio, fecha_creacion, estado
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          usuario_creador, usuario_creador_id, observaciones, estado,
+          fecha_inicio, fecha_creacion, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         numeroPT,
         numeroCorrelativo.toString(),
@@ -76,9 +82,12 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
         permisoData.tipoMantenimiento || 'PREVENTIVO',
         permisoData.tipoMantenimientoOtros || null,
         permisoData.usuarioCreador || currentUser?.email || 'unknown',
+        parseInt(currentUser?.id) || 'unknown',
+        permisoData.observaciones || null,
+        'CREADO',
         permisoData.fechaInicio || formatLocalDateTime(getLocalDateTime()),
         formatLocalDateTime(getLocalDateTime()),
-        'CREADO'
+        formatLocalDateTime(getLocalDateTime())
       ).run();
       
       const permisoId = insertPermiso.meta.last_row_id;
@@ -93,7 +102,7 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
             ) VALUES (?, ?, ?, ?, ?, ?)
           `).bind(
             permisoId, 
-            persona.id, // Ahora es el usuario.id directamente
+            parseInt(persona.id), // Ahora es el usuario.id directamente
             persona.nombre || 'Sin nombre', 
             persona.empresa || 'Sin empresa', 
             persona.rol || 'Sin rol',
@@ -517,7 +526,7 @@ export async function handleGenerateRegister(request, corsHeaders, env) {
   return new Response(htmlContent, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Content-Disposition': `inline; filename="TomaConocimiento_${data.planta}_${new Date().toISOString().split('T')[0]}.html"`,
+      'Content-Disposition': `inline; filename="TomaConocimiento_${data.planta}_${formatLocalDateTime(getLocalDateTime()).split(' ')[0].replace(/-/g, '')}.html"`,
       ...corsHeaders
     }
   });
@@ -566,10 +575,6 @@ export async function handleHealth(request, corsHeaders, env) {
     
     return new Response(JSON.stringify({
       status: 'OK',
-      security: {
-        jwtSecret: env.JWT_SECRET ? 'Configured' : 'Using default',
-        rateLimitKV: env.RATE_LIMIT_KV ? 'Connected' : 'Not configured'
-      },
       databases: checks,
       localTime: formatLocalDateTime(getLocalDateTime()),
       message: 'Sistema operativo con D1 Database'
@@ -588,10 +593,293 @@ export async function handleHealth(request, corsHeaders, env) {
   }
 }
 
-export async function handleExportarPermisoExcel(request, corsHeaders, env) {
+// Función para manejar la actualización de permisos
+async function handleUpdatePermiso(permisoData, env, currentUser, services, corsHeaders) {
+  const { auditLogger } = services;
+  
+  console.log('BACKEND - Recibiendo edición permiso, ID:', permisoData.permisoId, 'Datos:', JSON.stringify(permisoData, null, 2));
+  
+  if (!permisoData.permisoId) {
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'ID del permiso requerido para actualización'
+    }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  try {
+    // Verificar que el permiso existe y está en estado CREADO
+    const existingPermiso = await env.DB_PERMISOS.prepare(`
+      SELECT * FROM permisos_trabajo WHERE id = ? AND estado = 'CREADO'
+    `).bind(permisoData.permisoId).first();
+
+    if (!existingPermiso) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado o no se puede editar (debe estar en estado CREADO)'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Verificar que el usuario actual es el creador
+    const esCreador = parseInt(currentUser.id) === parseInt(existingPermiso.usuario_creador_id);
+    const esEnel = currentUser.esEnel || currentUser.rol === 'Supervisor Enel';
+    
+    if (!esCreador && !esEnel) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Solo el creador del permiso puede editarlo'
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Actualizar el permiso principal
+    await env.DB_PERMISOS.prepare(`
+      UPDATE permisos_trabajo SET 
+        planta_id = ?, planta_nombre = ?, aerogenerador_id = ?, 
+        aerogenerador_nombre = ?, descripcion = ?, jefe_faena_id = ?, 
+        jefe_faena_nombre = ?, supervisor_parque_id = ?, supervisor_parque_nombre = ?, 
+        tipo_mantenimiento = ?, tipo_mantenimiento_otros = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).bind(
+      permisoData.plantaId || 'unknown',
+      permisoData.planta,
+      permisoData.aerogeneradorCodigo || null,
+      permisoData.aerogenerador || null,
+      permisoData.descripcion,
+      permisoData.jefeFaenaId || 'unknown',
+      permisoData.jefeFaena,
+      permisoData.supervisorParqueId || null,
+      permisoData.supervisorParque || null,
+      permisoData.tipoMantenimiento || 'PREVENTIVO',
+      permisoData.tipoMantenimientoOtros || null,
+      formatLocalDateTime(getLocalDateTime()),
+      permisoData.permisoId
+    ).run();
+
+    // Eliminar registros existentes relacionados
+    await env.DB_PERMISOS.prepare(`DELETE FROM permiso_personal WHERE permiso_id = ?`).bind(permisoData.permisoId).run();
+    await env.DB_PERMISOS.prepare(`DELETE FROM permiso_actividades WHERE permiso_id = ?`).bind(permisoData.permisoId).run();
+    await env.DB_PERMISOS.prepare(`DELETE FROM permiso_matriz_riesgos WHERE permiso_id = ?`).bind(permisoData.permisoId).run();
+
+    // Re-insertar personal actualizado
+    if (permisoData.personal && permisoData.personal.length > 0) {
+      for (const persona of permisoData.personal) {
+        await env.DB_PERMISOS.prepare(`
+          INSERT INTO permiso_personal (
+            permiso_id, personal_id, personal_nombre, 
+            personal_empresa, personal_rol, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(
+          permisoData.permisoId, 
+          parseInt(persona.id),
+          persona.nombre || 'Sin nombre', 
+          persona.empresa || 'Sin empresa', 
+          persona.rol || 'Sin rol',
+          formatLocalDateTime(getLocalDateTime())
+        ).run();
+      }
+    }
+
+    // Re-insertar actividades actualizadas
+    if (permisoData.actividades && permisoData.actividades.length > 0) {
+      for (const actividad of permisoData.actividades) {
+        await env.DB_PERMISOS.prepare(`
+          INSERT INTO permiso_actividades (
+            permiso_id, actividad_id, actividad_nombre, 
+            tipo_actividad, created_at
+          ) VALUES (?, ?, ?, ?, ?)
+        `).bind(
+          permisoData.permisoId, 
+          actividad.id || 'unknown', 
+          actividad.nombre || 'Sin nombre', 
+          actividad.tipo || 'RUTINARIA',
+          formatLocalDateTime(getLocalDateTime())
+        ).run();
+      }
+    }
+
+    // Re-insertar matriz de riesgos actualizada
+    if (permisoData.matrizRiesgos && permisoData.matrizRiesgos.length > 0) {
+      for (const riesgo of permisoData.matrizRiesgos) {
+        await env.DB_PERMISOS.prepare(`
+          INSERT INTO permiso_matriz_riesgos (
+            permiso_id, actividad, peligro, riesgo, 
+            medidas_preventivas, codigo_matriz, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          permisoData.permisoId, 
+          riesgo.actividad || 'Sin actividad', 
+          riesgo.peligro || 'Sin peligro', 
+          riesgo.riesgo || 'Sin riesgo', 
+          riesgo.medidas || 'Sin medidas', 
+          riesgo.codigo || null,
+          formatLocalDateTime(getLocalDateTime())
+        ).run();
+      }
+    }
+
+    // Log auditoría
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'UPDATE_PERMISO',
+        resource: 'permisos',
+        resourceId: permisoData.permisoId.toString(),
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email,
+        ip: null,
+        success: true,
+        metadata: { numeroPT: existingPermiso.numero_pt, planta: permisoData.planta }
+      });
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      id: permisoData.permisoId, 
+      numeroPT: existingPermiso.numero_pt,
+      message: 'Permiso actualizado exitosamente'
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Error actualizando permiso:', error);
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'UPDATE_PERMISO_FAILED',
+        resource: 'permisos',
+        resourceId: permisoData.permisoId?.toString(),
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email,
+        ip: null,
+        success: false,
+        error: error.message
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: `Error al actualizar el permiso: ${error.message}`
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handlePermisoDetalle(request, corsHeaders, env, currentUser, services) {
   if (request.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  // Verificar que el usuario esté autenticado
+  if (!currentUser || !currentUser.sub) {
+    return new Response(JSON.stringify({ error: 'Usuario no autorizado' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const permisoId = url.searchParams.get('id');
+    
+    if (!permisoId) {
+      return new Response(JSON.stringify({ error: 'ID del permiso requerido' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener datos completos del permiso
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT * FROM permisos_trabajo WHERE id = ?
+    `).bind(permisoId).first();
+    
+    if (!permiso) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Verificar que el usuario actual sea el creador o tenga permisos
+    const esCreador = parseInt(currentUser.id) === parseInt(permiso.usuario_creador_id);
+    const esEnel = currentUser.esEnel || currentUser.rol === 'Supervisor Enel';
+    
+    if (!esCreador && !esEnel) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'No tienes permisos para ver este permiso' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener actividades del permiso
+    const actividadesResult = await env.DB_PERMISOS.prepare(`
+      SELECT actividad_id FROM permiso_actividades WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    const actividades_ids = (actividadesResult.results || []).map(a => a.actividad_id).join(',');
+    
+    // Obtener personal del permiso
+    const personalResult = await env.DB_PERMISOS.prepare(`
+      SELECT personal_id FROM permiso_personal WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    const personal_ids = (personalResult.results || []).map(p => p.personal_id).join(',');
+    
+    // Agregar los IDs al objeto permiso
+    permiso.actividades_ids = actividades_ids;
+    permiso.personal_ids = personal_ids;
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      permiso: permiso 
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo detalle permiso:', error);
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: 'Error interno del servidor' 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handleExportarPermisoExcel(request, corsHeaders, env, currentUser, services) {
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  // Verificar que el usuario esté autenticado
+  if (!currentUser || !currentUser.sub) {
+    return new Response(JSON.stringify({ error: 'Usuario no autorizado' }), {
+      status: 401,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
@@ -700,8 +988,8 @@ export async function handleExportarPermisoExcel(request, corsHeaders, env) {
     
     return new Response(csvContent, {
       headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="PT_${permiso.numero_pt}_${new Date().toISOString().split('T')[0]}.csv"`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="PT-${permiso.numero_pt}_${currentUser.usuario || 'Usuario'}.xlsx"`,
         ...corsHeaders
       }
     });
@@ -715,10 +1003,18 @@ export async function handleExportarPermisoExcel(request, corsHeaders, env) {
   }
 }
 
-export async function handleExportarPermisoPdf(request, corsHeaders, env) {
+export async function handleExportarPermisoPdf(request, corsHeaders, env, currentUser, services) {
   if (request.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  // Verificar que el usuario esté autenticado
+  if (!currentUser || !currentUser.sub) {
+    return new Response(JSON.stringify({ error: 'Usuario no autorizado' }), {
+      status: 401,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
@@ -773,8 +1069,40 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env) {
       FROM permiso_materiales WHERE permiso_id = ?
     `).bind(permisoId).all();
     
-    // Logo Enel en base64
-    const logoEnel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAAAllBMVEX///8AcbIAbrAAabAAZ68AZq4AYq0AY60AX6wAXKsAWaoAVqkAVakATqUAS6QARaIAPp4ANJoAM5kALpYAK5UAJpMAH48AGowAFIgAEYcACIIAAH4AAHwAAHkAAHX7/f719/vw9Pjp7/Xh6fHY4+zR3unI2ObAz+G5ydy0xNqswNamuNKbuM+Rr8uKqsiEpMV+n8J4mcBylr1rirhef7MN';
+    // Obtener matriz de riesgos completa para las actividades del permiso
+    let matrizRiesgosCompleta = [];
+    if (actividadesResult.results && actividadesResult.results.length > 0) {
+      const actividades = actividadesResult.results.map(a => a.actividad_nombre);
+      const placeholders = actividades.map(() => '?').join(',');
+      const matrizResult = await env.DB_HSEQ.prepare(`
+        SELECT codigo, actividad, peligro, riesgo, medidas_preventivas
+        FROM matriz_riesgos 
+        WHERE estado = 'Activo' AND actividad IN (${placeholders})
+        ORDER BY actividad ASC, codigo ASC
+      `).bind(...actividades).all();
+      matrizRiesgosCompleta = matrizResult.results || [];
+    }
+    
+    // Logo Enel simplificado en SVG
+    const logoEnel = 'data:image/svg+xml;base64,' + btoa(`
+        <svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="enelGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#ff6b35;stop-opacity:1" />
+                    <stop offset="25%" style="stop-color:#ff8c42;stop-opacity:1" />
+                    <stop offset="50%" style="stop-color:#f75c03;stop-opacity:1" />
+                    <stop offset="75%" style="stop-color:#e65100;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#d84315;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <rect width="200" height="80" fill="#ffffff"/>
+            <circle cx="30" cy="25" r="8" fill="url(#enelGradient)"/>
+            <circle cx="50" cy="25" r="8" fill="url(#enelGradient)"/>
+            <circle cx="70" cy="25" r="8" fill="url(#enelGradient)"/>
+            <text x="30" y="50" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#333333">ENEL</text>
+            <text x="30" y="68" font-family="Arial, sans-serif" font-size="14" fill="#666666">Distribución Chile</text>
+        </svg>
+    `);
     
     // Generar HTML para PDF
     const htmlContent = `
@@ -787,7 +1115,7 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env) {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; color: #333; }
         .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0066cc; padding-bottom: 20px; }
-        .logo { width: 120px; height: auto; margin-bottom: 10px; }
+        .logo { width: 150px; height: 75px; margin-bottom: 10px; }
         .title { color: #0066cc; font-size: 24px; font-weight: bold; }
         .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
         .section { margin-bottom: 25px; }
@@ -878,6 +1206,23 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env) {
         </table>
     </div>
     
+    <div class="section">
+        <div class="section-title">MATRIZ DE RIESGOS</div>
+        <table class="table">
+            <tr><th>Código</th><th>Actividad</th><th>Peligro</th><th>Riesgo</th><th>Medidas Preventivas</th></tr>
+            ${matrizRiesgosCompleta.map(m => 
+              `<tr>
+                <td>${m.codigo || 'N/A'}</td>
+                <td>${m.actividad}</td>
+                <td>${m.peligro}</td>
+                <td>${m.riesgo}</td>
+                <td>${m.medidas_preventivas}</td>
+              </tr>`
+            ).join('')}
+            ${matrizRiesgosCompleta.length === 0 ? '<tr><td colspan="5">No hay matriz de riesgos disponible para las actividades seleccionadas</td></tr>' : ''}
+        </table>
+    </div>
+    
     ${permiso.observaciones_cierre ? `
     <div class="section">
         <div class="section-title">OBSERVACIONES DE CIERRE</div>
@@ -889,7 +1234,6 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env) {
     
     <div class="footer">
         <p>Documento generado el ${new Date().toLocaleString('es-CL')} - PT Wind - Sistema de Gestión de Permisos de Trabajo</p>
-        <p>Generado con Claude Code</p>
     </div>
 </body>
 </html>
@@ -897,8 +1241,8 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env) {
     
     return new Response(htmlContent, {
       headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Disposition': `inline; filename="PT_${permiso.numero_pt}_Auditoria.html"`,
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="PT-${permiso.numero_pt}_${currentUser.usuario || 'Usuario'}.html"`,
         ...corsHeaders
       }
     });

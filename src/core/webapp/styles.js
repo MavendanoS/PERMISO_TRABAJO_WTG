@@ -174,6 +174,15 @@ export function getStyles() {
         background: #c0392b;
     }
     
+    .btn-warning {
+        background: var(--warning-color);
+        color: white;
+    }
+    
+    .btn-warning:hover:not(:disabled) {
+        background: #d68910;
+    }
+    
     .btn-small {
         padding: 8px 16px;
         font-size: 12px;
@@ -407,6 +416,17 @@ export function getStyles() {
         box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
     }
     
+    .search-box {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr auto;
+        gap: 12px;
+        align-items: center;
+    }
+    
+    .search-box input[type="date"] {
+        color: var(--text-primary);
+    }
+    
     .data-table {
         width: 100%;
         overflow-x: auto;
@@ -441,8 +461,9 @@ export function getStyles() {
     
     .permiso-card-container {
         perspective: 1000px;
-        margin-bottom: 20px;
+        margin-bottom: 24px;
         position: relative;
+        width: 100%;
     }
     
     .permiso-card {
@@ -614,6 +635,11 @@ export function getStyles() {
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
     
     /* Layout para tiempos - 2 columnas */
@@ -972,32 +998,334 @@ export function getStyles() {
     
     @media (max-width: 768px) {
         .container {
-            padding: 10px;
+            padding: 8px;
+            max-width: 100%;
         }
         
         .login-container {
-            padding: 32px 24px;
+            padding: 24px 16px;
+            margin: 10px;
+            max-width: calc(100% - 20px);
+        }
+        
+        .app-container {
+            margin: 0;
+            border-radius: 0;
+            min-height: 100vh;
+        }
+        
+        .header {
+            padding: 16px 20px;
+            flex-direction: column;
+            gap: 12px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+        }
+        
+        .header p {
+            font-size: 12px;
+        }
+        
+        .tabs {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .tab {
+            white-space: nowrap;
+            min-width: 120px;
+            padding: 12px 16px;
+            font-size: 13px;
+        }
+        
+        .tab-content {
+            padding: 16px 12px;
         }
         
         .grid-three {
             grid-template-columns: 1fr;
+            gap: 16px;
         }
         
         .selector-dual {
             grid-template-columns: 1fr;
+            gap: 16px;
         }
         
         .selector-controls {
             flex-direction: row;
             justify-content: center;
+            gap: 12px;
         }
         
-        .tabs {
-            overflow-x: auto;
+        .card {
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .card h3 {
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        
+        /* Cards de permisos - mejorar separación y responsive */
+        .permiso-card-container {
+            margin-bottom: 32px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+        
+        .permiso-card-container:last-child {
+            border-bottom: none;
+        }
+        
+        .permiso-card {
+            min-height: auto;
+            height: auto;
+            transform: none !important;
+            transform-style: flat;
+        }
+        
+        .permiso-card-front,
+        .permiso-card-back {
+            min-height: 280px;
+            height: auto;
+            padding: 16px;
+            position: relative;
+            transform: none !important;
+        }
+        
+        .permiso-card-back {
+            position: relative;
+            transform: none !important;
+            backface-visibility: visible;
+        }
+        
+        .permiso-card.flipped .permiso-card-front {
+            display: none;
+        }
+        
+        .permiso-card:not(.flipped) .permiso-card-back {
+            display: none;
+        }
+        
+        .permiso-card.flipped {
+            margin-bottom: 32px;
+        }
+        
+        .permiso-card-container.flipped-container {
+            margin-bottom: 48px;
+        }
+        
+        .permiso-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .permiso-numero {
+            font-size: 16px;
+        }
+        
+        .permiso-info {
+            grid-template-columns: 1fr;
+            gap: 8px;
+            font-size: 13px;
+        }
+        
+        .permiso-actions {
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 11px;
+        }
+        
+        /* Formularios en móvil */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            font-size: 16px; /* Previene zoom en iOS */
+            padding: 12px;
+        }
+        
+        .form-group label {
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        
+        /* Tablas responsivas */
+        .data-table {
+            font-size: 12px;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 8px 6px;
+        }
+        
+        .materials-table-container {
+            max-height: 250px;
+        }
+        
+        .materials-table {
+            font-size: 11px;
+        }
+        
+        .materials-table th,
+        .materials-table td {
+            padding: 6px 4px;
+        }
+        
+        /* Search box responsive */
+        .search-box {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .search-box input[type=\"date\"] {
+            font-size: 16px; /* Previene zoom en iOS */
+        }
+        
+        .search-input {
+            font-size: 16px; /* Previene zoom en iOS */
+        }
+        
+        /* Tiempos y cierre grids */
+        .tiempos-grid,
+        .cierre-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        /* Modal responsivo */
+        .modal {
+            margin: 10px;
+            max-width: calc(100% - 20px);
+            max-height: calc(100vh - 20px);
+            overflow-y: auto;
+        }
+        
+        /* Export modal responsive */
+        #exportModal > div {
+            max-width: calc(100% - 20px);
+            margin: 10px;
+            padding: 20px 16px;
+        }
+        
+        #exportModal h3 {
+            font-size: 20px;
+        }
+        
+        #exportModal .btn {
+            padding: 12px;
+            font-size: 14px;
+        }
+    }
+    
+    /* Pantallas muy pequeñas (teléfonos en vertical) */
+    @media (max-width: 480px) {
+        .container {
+            padding: 4px;
+        }
+        
+        .login-container {
+            padding: 20px 12px;
+            margin: 5px;
+            max-width: calc(100% - 10px);
+        }
+        
+        .header {
+            padding: 12px 16px;
+        }
+        
+        .header h1 {
+            font-size: 16px;
         }
         
         .tab {
-            white-space: nowrap;
+            min-width: 100px;
+            padding: 10px 12px;
+            font-size: 12px;
+        }
+        
+        .tab-content {
+            padding: 12px 8px;
+        }
+        
+        .card {
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .permiso-card-container {
+            margin-bottom: 28px;
+            padding-bottom: 12px;
+        }
+        
+        .permiso-card-front,
+        .permiso-card-back {
+            padding: 12px;
+            min-height: 250px;
+            height: auto;
+            position: relative;
+            transform: none !important;
+        }
+        
+        .permiso-card-back {
+            position: relative;
+            transform: none !important;
+        }
+        
+        .permiso-numero {
+            font-size: 14px;
+        }
+        
+        .permiso-info {
+            font-size: 12px;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            font-size: 12px;
+        }
+        
+        .btn-small {
+            padding: 5px 10px;
+            font-size: 10px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px;
+        }
+        
+        .data-table {
+            font-size: 11px;
+        }
+        
+        .materials-table {
+            font-size: 10px;
+        }
+        
+        #exportModal > div {
+            padding: 16px 12px;
+        }
+        
+        #exportModal h3 {
+            font-size: 18px;
         }
     }
     

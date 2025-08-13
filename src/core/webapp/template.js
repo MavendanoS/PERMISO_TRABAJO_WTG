@@ -184,6 +184,14 @@ export function getWebApp() {
                 '</div>' +
                 '<div class=\"search-box\">' +
                     '<input type=\"text\" id=\"searchPermiso\" class=\"search-input\" placeholder=\"Buscar por número de permiso, planta, descripción...\">' +
+                    '<select id=\"filterEstado\" class=\"search-input\" style=\"max-width: 200px;\">' +
+                        '<option value=\"\">Todos los estados</option>' +
+                        '<option value=\"CREADO\">Creados</option>' +
+                        '<option value=\"ACTIVO\">Activos</option>' +
+                        '<option value=\"CERRADO\">Cerrados</option>' +
+                    '</select>' +
+                    '<input type=\"date\" id=\"fechaDesde\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha desde - Filtra permisos creados desde esta fecha\" placeholder=\"Fecha desde permiso\">' +
+                    '<input type=\"date\" id=\"fechaHasta\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha hasta - Filtra permisos creados hasta esta fecha\" placeholder=\"Fecha hasta permiso\">' +
                     '<button id=\"clearSearchBtn\" class=\"btn btn-secondary btn-small\">LIMPIAR</button>' +
                 '</div>' +
                 '<div id=\"permisosContainer\" class=\"loading\">' +
@@ -336,6 +344,43 @@ export function getWebApp() {
             '<div style=\"display: flex; gap: 12px; justify-content: flex-end;\">' +
                 '<button id=\"cancelarCierreBtn\" class=\"btn btn-secondary btn-small\">CANCELAR</button>' +
                 '<button id=\"confirmarCierreBtn\" class=\"btn btn-danger btn-small\">CERRAR PERMISO</button>' +
+            '</div>' +
+        '</div>' +
+    '</div>' +
+
+    '<!-- MODAL DE EXPORTACIÓN -->' +
+    '<div id="exportModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">' +
+        '<div style="background: white; border-radius: 12px; padding: 32px; max-width: 480px; width: 90%; margin: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">' +
+            '<div style="text-align: center; margin-bottom: 24px;">' +
+                '<h3 style="margin-bottom: 12px; color: var(--primary-color); font-size: 24px; font-weight: 700;">📁 Exportar Permiso</h3>' +
+                '<p style="color: var(--text-secondary); font-size: 14px; margin: 0;">' +
+                    'Permiso: <strong id="exportPermisoInfo"></strong>' +
+                '</p>' +
+            '</div>' +
+            
+            '<div style="display: grid; gap: 16px; margin-bottom: 24px;">' +
+                '<button id="exportExcelBtn" class="btn" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; font-size: 16px;">' +
+                    '<span style="font-size: 24px;">📊</span>' +
+                    '<div style="text-align: left;">' +
+                        '<div style="font-weight: 600;">Excel (CSV)</div>' +
+                    '</div>' +
+                '</button>' +
+                
+                '<button id="exportPdfBtn" class="btn btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; font-size: 16px;">' +
+                    '<span style="font-size: 24px;">📄</span>' +
+                    '<div style="text-align: left;">' +
+                        '<div style="font-weight: 600;">PDF (HTML)</div>' +
+                    '</div>' +
+                '</button>' +
+            '</div>' +
+            
+            '<div id="exportStatus" style="display: none; text-align: center; padding: 16px; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 16px;">' +
+                '<div style="display: inline-block; width: 20px; height: 20px; border: 2px solid var(--primary-color); border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></div>' +
+                '<span id="exportStatusText">Generando archivo...</span>' +
+            '</div>' +
+            
+            '<div style="text-align: center;">' +
+                '<button id="cancelExportBtn" class="btn btn-secondary btn-small">Cancelar</button>' +
             '</div>' +
         '</div>' +
     '</div>' +

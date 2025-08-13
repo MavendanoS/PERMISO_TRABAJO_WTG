@@ -9,7 +9,7 @@ export function getWebAppScript() {
     // CONFIGURACIÓN Y VARIABLES GLOBALES
     // ========================================================================
     
-    console.log('PT Wind v18.0 - D1 Database Edition');
+    // PT Wind v18.0 - D1 Database Edition
     
     const API_BASE = window.location.origin + '/api';
     let currentUser = null;
@@ -31,6 +31,48 @@ export function getWebAppScript() {
     let actividadesSeleccionadas = [];
     let matrizRiesgosSeleccionada = [];
     let materialesParaCierre = [];
+    
+    // ========================================================================
+    // FUNCIONES DE TIEMPO - ZONA HORARIA CHILE
+    // ========================================================================
+    
+    function getChileDateTime(offsetMinutes = 0) {
+      const now = new Date();
+      
+      // Determinar si estamos en horario de verano chileno (DST)
+      const year = now.getUTCFullYear();
+      
+      // Segundo domingo de septiembre (inicio DST)
+      const septemberSecondSunday = getSecondSunday(year, 8);
+      // Primer domingo de abril (fin DST)
+      const aprilFirstSunday = getFirstSunday(year, 3);
+      
+      const currentTime = now.getTime();
+      const isDST = currentTime >= septemberSecondSunday.getTime() || currentTime < aprilFirstSunday.getTime();
+      
+      // UTC-3 durante DST, UTC-4 durante horario estándar
+      const chileOffsetMinutes = isDST ? -3 * 60 : -4 * 60;
+      
+      return new Date(now.getTime() + (chileOffsetMinutes + offsetMinutes) * 60000);
+    }
+    
+    function getSecondSunday(year, month) {
+      const date = new Date(Date.UTC(year, month, 1));
+      const firstSunday = 7 - date.getUTCDay();
+      return new Date(Date.UTC(year, month, firstSunday + 7));
+    }
+    
+    function getFirstSunday(year, month) {
+      const date = new Date(Date.UTC(year, month, 1));
+      const firstSunday = 7 - date.getUTCDay();
+      return new Date(Date.UTC(year, month, firstSunday === 7 ? 7 : firstSunday));
+    }
+    
+    function formatChileDateTime(date) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' +
+             pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    }
     
     // ========================================================================
     // FUNCIONES DE SEGURIDAD (sin cambios)
@@ -98,7 +140,7 @@ export function getWebAppScript() {
     // ========================================================================
     
     document.addEventListener('DOMContentLoaded', async function() {
-        console.log('Inicializando aplicación...');
+        // Inicializando aplicación...
         
         const storedToken = sessionStorage.getItem('authToken');
         const storedSessionId = sessionStorage.getItem('sessionId');  // ← AGREGAR
@@ -151,6 +193,12 @@ export function getWebAppScript() {
         on('clearSearchBtn', 'click', clearSearch);
         const search = document.getElementById('searchPermiso'); 
         if (search) search.addEventListener('input', filterPermisos);
+        const filterEstado = document.getElementById('filterEstado');
+        if (filterEstado) filterEstado.addEventListener('change', filterPermisos);
+        const fechaDesde = document.getElementById('fechaDesde');
+        if (fechaDesde) fechaDesde.addEventListener('change', filterPermisos);
+        const fechaHasta = document.getElementById('fechaHasta');
+        if (fechaHasta) fechaHasta.addEventListener('change', filterPermisos);
         
         // Modal de cierre
         on('cancelarCierreBtn', 'click', closeCerrarModal);
@@ -332,7 +380,7 @@ export function getWebAppScript() {
     // ========================================================================
     
     async function loadAppData() {
-        console.log('Cargando datos de la aplicación...');
+        // Cargando datos de la aplicación...
         
         try {
             const [parques, personal, actividades] = await Promise.all([
@@ -354,7 +402,7 @@ export function getWebAppScript() {
             
             await loadPermisos();
             
-            console.log('Datos cargados exitosamente');
+            // Datos cargados exitosamente
         } catch (error) {
             console.error('Error cargando datos:', error);
             alert('Error al cargar los datos del sistema');
@@ -472,6 +520,11 @@ export function getWebAppScript() {
         
         // Cargar supervisores Enel del parque
         await populateSupervisores(plantaNombre);
+        
+        // Limpiar personal seleccionado al cambiar de planta
+        personalSeleccionado = [];
+        const personalSeleccionadoContainer = document.getElementById('personalSeleccionado');
+        personalSeleccionadoContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay personal seleccionado</div>';
         
         // Cargar personal del parque
         await loadPersonalByParque(plantaNombre);
@@ -714,11 +767,14 @@ export function getWebAppScript() {
     async function handleCreatePermiso(e) {
         e.preventDefault();
         
+        // Determinar si estamos editando o creando
+        const isEditing = window.permisoEditando !== undefined;
+        
         // Deshabilitar el botón de submit para evitar múltiples envíos
         const submitButton = e.target.querySelector('button[type="submit"]');
         const originalText = submitButton.textContent;
         submitButton.disabled = true;
-        submitButton.textContent = 'CREANDO PERMISO...';
+        submitButton.textContent = isEditing ? 'ACTUALIZANDO PERMISO...' : 'CREANDO PERMISO...';
         
         const plantaSelect = document.getElementById('planta');
         const aerogeneradorSelect = document.getElementById('aerogenerador');
@@ -742,7 +798,7 @@ export function getWebAppScript() {
             actividades: actividadesSeleccionadas,
             matrizRiesgos: matrizRiesgosSeleccionada,
             usuarioCreador: currentUser?.email || 'unknown',
-            fechaInicio: new Date().toISOString()
+            fechaInicio: formatChileDateTime(getChileDateTime())
         };
         
         if (!permisoData.planta || !permisoData.descripcion || !permisoData.jefeFaena) {
@@ -762,13 +818,30 @@ export function getWebAppScript() {
         }
         
         try {
-            const response = await ClientSecurity.makeSecureRequest('/permisos', {
-                method: 'POST',
-                body: JSON.stringify(permisoData)
-            });
+            let response;
+            
+            if (isEditing) {
+                // Agregar ID del permiso para edición
+                permisoData.permisoId = window.permisoEditando;
+                console.log('EDITANDO PERMISO - ID:', window.permisoEditando, 'Datos:', permisoData);
+                
+                response = await ClientSecurity.makeSecureRequest('/permisos', {
+                    method: 'PUT',
+                    body: JSON.stringify(permisoData)
+                });
+            } else {
+                response = await ClientSecurity.makeSecureRequest('/permisos', {
+                    method: 'POST',
+                    body: JSON.stringify(permisoData)
+                });
+            }
             
             if (response.success) {
-                alert('Permiso creado exitosamente\\n\\nNúmero: ' + response.numeroPT);
+                const mensaje = isEditing ? 
+                    'Permiso actualizado exitosamente' : 
+                    'Permiso creado exitosamente\\n\\nNúmero: ' + response.numeroPT;
+                    
+                alert(mensaje);
                 
                 document.getElementById('permisoForm').reset();
                 personalSeleccionado = [];
@@ -777,21 +850,29 @@ export function getWebAppScript() {
                 document.getElementById('personalSeleccionado').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay personal seleccionado</div>';
                 updateMatrizDisplay();
                 
+                // Resetear estado de edición
+                if (isEditing) {
+                    window.permisoEditando = undefined;
+                    submitButton.textContent = 'CREAR PERMISO DE TRABAJO';
+                }
+                
                 await loadPermisos();
                 switchTab('consultar');
                 
                 // Re-habilitar el botón después del éxito
                 submitButton.disabled = false;
-                submitButton.textContent = originalText;
+                submitButton.textContent = isEditing ? 'CREAR PERMISO DE TRABAJO' : originalText;
             } else {
-                alert('Error al crear el permiso: ' + (response.error || 'Error desconocido'));
+                const accion = isEditing ? 'actualizar' : 'crear';
+                alert(\`Error al \${accion} el permiso: \` + (response.error || 'Error desconocido'));
                 // Re-habilitar el botón si hay error
                 submitButton.disabled = false;
                 submitButton.textContent = originalText;
             }
         } catch (error) {
-            console.error('Error creando permiso:', error);
-            alert('Error al crear el permiso: ' + error.message);
+            const accion = isEditing ? 'actualizando' : 'creando';
+            console.error(\`Error \${accion} permiso:\`, error);
+            alert(\`Error al \${accion} el permiso: \` + error.message);
             // Re-habilitar el botón si hay error
             submitButton.disabled = false;
             submitButton.textContent = originalText;
@@ -806,6 +887,10 @@ export function getWebAppScript() {
         try {
             const response = await ClientSecurity.makeSecureRequest('/permisos');
             permisosData = response.permisos || [];
+            
+            // Configurar límites de fechas basados en los permisos cargados
+            setupDateLimits();
+            
             displayPermisos();
         } catch (error) {
             console.error('Error cargando permisos:', error);
@@ -848,6 +933,10 @@ export function getWebAppScript() {
         
         const estadoClass = 'estado-' + (permiso.estado || 'CREADO').toLowerCase();
         const esEnel = currentUser?.esEnel || currentUser?.rol === 'Supervisor Enel';
+        
+        // Verificar si el usuario es el creador del permiso
+        const esCreador = currentUser?.id && permiso.usuario_creador_id && 
+                         currentUser.id.toString() === permiso.usuario_creador_id.toString();
         
         // Verificar si el usuario puede cerrar el permiso
         // Ahora todos los IDs son de la misma tabla usuarios
@@ -913,6 +1002,9 @@ export function getWebAppScript() {
                     \` : ''}
                     
                     <div class="permiso-actions">
+                        \${permiso.estado === 'CREADO' && esCreador ? 
+                            \`<button class="btn btn-warning btn-small" onclick="editarPermiso(\${permiso.id})" style="margin-right: 8px;">✏️ EDITAR</button>\` : ''}
+                        
                         \${permiso.estado === 'CREADO' && esEnel ? 
                             \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
                         
@@ -923,19 +1015,9 @@ export function getWebAppScript() {
                             \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
                         
                         \${permiso.estado === 'CERRADO' ? 
-                            \`<div class="export-dropdown" style="display: inline-block; position: relative; margin-left: 8px;">
-                                <button class="btn btn-success btn-small dropdown-toggle" onclick="toggleExportMenu(\${permiso.id})">
-                                    📁 EXPORTAR ▼
-                                </button>
-                                <div class="dropdown-menu" id="exportMenu-\${permiso.id}" style="display: none;">
-                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, 'excel')">
-                                        📊 Excel (para SAP)
-                                    </a>
-                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, 'pdf')">
-                                        📄 PDF (auditoría)
-                                    </a>
-                                </div>
-                            </div>\` : ''}
+                            \`<button class="btn btn-success btn-small" onclick="openExportModal(\${permiso.id}, '\${permiso.numero_pt}')" style="margin-left: 8px;">
+                                📁 EXPORTAR
+                            </button>\` : ''}
                         
                         \${permiso.estado === 'CERRADO' ? 
                             \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
@@ -1172,12 +1254,10 @@ export function getWebAppScript() {
     
     function filterPermisos() {
         const searchTerm = document.getElementById('searchPermiso').value.toLowerCase();
+        const estadoFilter = document.getElementById('filterEstado').value;
+        const fechaDesde = document.getElementById('fechaDesde').value;
+        const fechaHasta = document.getElementById('fechaHasta').value;
         const txt = v => String(v ?? '').toLowerCase();
-        
-        if (!searchTerm) {
-            displayPermisos();
-            return;
-        }
         
         // Filtrar primero por parques autorizados
         const parquesAutorizados = currentUser?.parques || [];
@@ -1187,13 +1267,52 @@ export function getWebAppScript() {
             return esEnel || parquesAutorizados.includes(permiso.planta_nombre);
         });
         
-        // Luego filtrar por término de búsqueda
-        const filtered = permisosAutorizados.filter(p =>
-            txt(p.numero_pt).includes(searchTerm) ||
-            txt(p.planta_nombre).includes(searchTerm) ||
-            txt(p.descripcion).includes(searchTerm) ||
-            txt(p.jefe_faena_nombre).includes(searchTerm)
-        );
+        // Filtrar por estado si se seleccionó uno
+        let filtered = permisosAutorizados;
+        if (estadoFilter) {
+            filtered = filtered.filter(p => p.estado === estadoFilter);
+        }
+        
+        // Filtrar por rango de fechas
+        if (fechaDesde || fechaHasta) {
+            filtered = filtered.filter(p => {
+                if (!p.fecha_creacion) return false;
+                
+                const fechaPermiso = new Date(p.fecha_creacion);
+                if (isNaN(fechaPermiso.getTime())) return false;
+                
+                const fechaPermisoStr = fechaPermiso.toISOString().split('T')[0];
+                
+                let cumpleFechaDesde = true;
+                let cumpleFechaHasta = true;
+                
+                if (fechaDesde) {
+                    cumpleFechaDesde = fechaPermisoStr >= fechaDesde;
+                }
+                
+                if (fechaHasta) {
+                    cumpleFechaHasta = fechaPermisoStr <= fechaHasta;
+                }
+                
+                return cumpleFechaDesde && cumpleFechaHasta;
+            });
+        }
+        
+        // Filtrar por término de búsqueda si hay uno
+        if (searchTerm) {
+            filtered = filtered.filter(p =>
+                txt(p.numero_pt).includes(searchTerm) ||
+                txt(p.planta_nombre).includes(searchTerm) ||
+                txt(p.descripcion).includes(searchTerm) ||
+                txt(p.jefe_faena_nombre).includes(searchTerm)
+            );
+        }
+        
+        // Si no hay filtros aplicados, mostrar todos
+        if (!searchTerm && !estadoFilter && !fechaDesde && !fechaHasta) {
+            displayPermisos();
+            return;
+        }
         
         const container = document.getElementById('permisosContainer');
         if (filtered.length === 0) {
@@ -1325,8 +1444,47 @@ export function getWebAppScript() {
         }
     });
     
+    function setupDateLimits() {
+        if (!permisosData || permisosData.length === 0) return;
+        
+        // Obtener todas las fechas de creación de los permisos
+        const fechas = permisosData
+            .map(p => p.fecha_creacion)
+            .filter(f => f) // Filtrar fechas válidas
+            .map(f => new Date(f))
+            .filter(d => !isNaN(d.getTime())); // Filtrar fechas válidas
+        
+        if (fechas.length === 0) return;
+        
+        // Encontrar fecha mínima y máxima
+        const fechaMin = new Date(Math.min(...fechas));
+        const fechaMax = new Date(Math.max(...fechas));
+        
+        // Formatear para input type="date" (YYYY-MM-DD)
+        const formatDate = (date) => {
+            return date.toISOString().split('T')[0];
+        };
+        
+        // Configurar límites en los inputs
+        const fechaDesde = document.getElementById('fechaDesde');
+        const fechaHasta = document.getElementById('fechaHasta');
+        
+        if (fechaDesde) {
+            fechaDesde.min = formatDate(fechaMin);
+            fechaDesde.max = formatDate(fechaMax);
+        }
+        
+        if (fechaHasta) {
+            fechaHasta.min = formatDate(fechaMin);
+            fechaHasta.max = formatDate(fechaMax);
+        }
+    }
+
     function clearSearch() {
         document.getElementById('searchPermiso').value = '';
+        document.getElementById('filterEstado').value = '';
+        document.getElementById('fechaDesde').value = '';
+        document.getElementById('fechaHasta').value = '';
         displayPermisos();
     }
     
@@ -1623,77 +1781,258 @@ export function getWebAppScript() {
     resetInactivityTimer();
     
     // ========================================================================
-    // FUNCIONES DE EXPORTACIÓN
+    // FUNCIONES DE EXPORTACIÓN CON MODAL
     // ========================================================================
     
-    window.toggleExportMenu = function(permisoId) {
-        const menu = document.getElementById(\`exportMenu-\${permisoId}\`);
+    let currentExportPermisoId = null;
+    let currentExportPermisoInfo = null;
+    
+    window.openExportModal = function(permisoId, permisoInfo) {
+        currentExportPermisoId = permisoId;
+        currentExportPermisoInfo = permisoInfo;
         
-        // Cerrar otros menus abiertos
-        document.querySelectorAll('.dropdown-menu').forEach(m => {
-            if (m.id !== \`exportMenu-\${permisoId}\`) {
-                m.style.display = 'none';
-            }
-        });
+        document.getElementById('exportPermisoInfo').textContent = permisoInfo || \`ID: \${permisoId}\`;
+        document.getElementById('exportModal').style.display = 'flex';
         
-        // Toggle el menu actual
-        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        // Reset status
+        document.getElementById('exportStatus').style.display = 'none';
+        document.getElementById('exportExcelBtn').disabled = false;
+        document.getElementById('exportPdfBtn').disabled = false;
     };
     
-    window.exportarArchivo = async function(permisoId, formato) {
+    window.closeExportModal = function() {
+        document.getElementById('exportModal').style.display = 'none';
+        currentExportPermisoId = null;
+        currentExportPermisoInfo = null;
+    };
+    
+    async function executeExport(formato) {
+        if (!currentExportPermisoId) return;
+        
         try {
-            // Cerrar el menu
-            document.getElementById(\`exportMenu-\${permisoId}\`).style.display = 'none';
+            // Mostrar estado de carga
+            document.getElementById('exportStatus').style.display = 'block';
+            document.getElementById('exportStatusText').textContent = \`Generando \${formato.toUpperCase()}...\`;
+            document.getElementById('exportExcelBtn').disabled = true;
+            document.getElementById('exportPdfBtn').disabled = true;
             
             let endpoint, filename;
             if (formato === 'excel') {
-                endpoint = \`\${API_BASE}/exportar-permiso-excel?id=\${permisoId}\`;
-                filename = \`PT_\${permisoId}_SAP.csv\`;
+                endpoint = \`\${API_BASE}/exportar-permiso-excel?id=\${currentExportPermisoId}\`;
+                filename = \`\${currentExportPermisoInfo}_SAP.csv\`;
             } else {
-                endpoint = \`\${API_BASE}/exportar-permiso-pdf?id=\${permisoId}\`;
-                filename = \`PT_\${permisoId}_Auditoria.html\`;
+                endpoint = \`\${API_BASE}/exportar-permiso-pdf?id=\${currentExportPermisoId}\`;
+                filename = \`\${currentExportPermisoInfo}_Auditoria.html\`;
             }
             
             const response = await fetch(endpoint, {
                 headers: {
-                    'Authorization': \`Bearer \${localStorage.getItem('auth_token')}\`
+                    'Authorization': 'Bearer ' + authToken
                 }
             });
             
             if (!response.ok) {
-                throw new Error(\`Error HTTP: \${response.status}\`);
+                const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+                throw new Error(errorData.error || \`Error HTTP: \${response.status}\`);
             }
             
+            document.getElementById('exportStatusText').textContent = 'Descargando archivo...';
+            
             const blob = await response.blob();
+            
+            // Verificar que el blob tiene contenido
+            if (blob.size === 0) {
+                throw new Error('El archivo generado está vacío');
+            }
+            
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
+            a.style.display = 'none';
             document.body.appendChild(a);
             a.click();
             
             // Cleanup
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 100);
             
-            showMessage(\`Archivo \${formato.toUpperCase()} descargado exitosamente\`, 'success');
+            // Reset UI y cerrar modal después de la descarga
+            document.getElementById('exportStatusText').textContent = 'Descarga completada';
+            setTimeout(() => {
+                document.getElementById('exportStatus').style.display = 'none';
+                document.getElementById('exportExcelBtn').disabled = false;
+                document.getElementById('exportPdfBtn').disabled = false;
+                showMessage(\`Archivo \${formato.toUpperCase()} descargado exitosamente\`, 'success');
+                closeExportModal();
+            }, 1500);
             
         } catch (error) {
             console.error('Error exportando:', error);
             showMessage(\`Error al generar archivo \${formato.toUpperCase()}: \${error.message}\`, 'error');
+            
+            // Reset UI
+            document.getElementById('exportStatus').style.display = 'none';
+            document.getElementById('exportExcelBtn').disabled = false;
+            document.getElementById('exportPdfBtn').disabled = false;
         }
-    };
+    }
     
-    // Cerrar menus al hacer clic fuera
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.export-dropdown')) {
-            document.querySelectorAll('.dropdown-menu').forEach(menu => {
-                menu.style.display = 'none';
+    // Event listeners para el modal de exportación
+    document.addEventListener('DOMContentLoaded', function() {
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        const exportPdfBtn = document.getElementById('exportPdfBtn');
+        const cancelExportBtn = document.getElementById('cancelExportBtn');
+        
+        if (exportExcelBtn) {
+            exportExcelBtn.addEventListener('click', () => executeExport('excel'));
+        }
+        
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener('click', () => executeExport('pdf'));
+        }
+        
+        if (cancelExportBtn) {
+            cancelExportBtn.addEventListener('click', closeExportModal);
+        }
+        
+        // Cerrar modal al hacer clic fuera
+        const exportModal = document.getElementById('exportModal');
+        if (exportModal) {
+            exportModal.addEventListener('click', function(event) {
+                if (event.target === exportModal) {
+                    closeExportModal();
+                }
             });
         }
     });
     
-    console.log('Sistema de seguridad activo - D1 Database Edition');
+    // Función para editar un permiso existente
+    window.editarPermiso = async function(permisoId) {
+        console.log('Iniciando edición de permiso ID:', permisoId);
+        try {
+            // Obtener los datos completos del permiso
+            const response = await ClientSecurity.makeSecureRequest(\`/permiso-detalle?id=\${permisoId}\`);
+            
+            if (!response.success) {
+                alert('Error al cargar los datos del permiso: ' + (response.error || 'Error desconocido'));
+                return;
+            }
+            
+            const permiso = response.permiso;
+            
+            // Verificar que el permiso esté en estado CREADO
+            if (permiso.estado !== 'CREADO') {
+                alert('Solo se pueden editar permisos en estado CREADO');
+                return;
+            }
+            
+            // Cambiar a la pestaña de nuevo permiso
+            const nuevoTab = document.querySelector('[data-tab="nuevo"]');
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+            
+            nuevoTab.classList.add('active');
+            document.getElementById('tab-nuevo').classList.add('active');
+            
+            // Rellenar el formulario con los datos del permiso
+            await llenarFormularioEdicion(permiso);
+            
+            // Indicar que se está editando
+            window.permisoEditando = permisoId;
+            const submitBtn = document.querySelector('#permisoForm button[type="submit"]');
+            console.log('Botón encontrado:', submitBtn);
+            if (submitBtn) {
+                submitBtn.textContent = 'ACTUALIZAR PERMISO DE TRABAJO';
+                console.log('Texto del botón cambiado a:', submitBtn.textContent);
+            } else {
+                console.error('No se encontró el botón de submit');
+            }
+            
+            alert('Permiso cargado para edición');
+            
+        } catch (error) {
+            console.error('Error editando permiso:', error);
+            alert('Error al cargar el permiso para edición: ' + error.message);
+        }
+    };
+    
+    async function llenarFormularioEdicion(permiso) {
+        console.log('Llenando formulario para edición con permiso:', permiso);
+        // Llenar campos básicos
+        document.getElementById('planta').value = permiso.planta_id || '';
+        document.getElementById('descripcion').value = permiso.descripcion || '';
+        document.getElementById('tipoMantenimiento').value = permiso.tipo_mantenimiento || '';
+        
+        if (permiso.tipo_mantenimiento === 'OTROS' && permiso.tipo_otros) {
+            document.getElementById('tipoOtros').value = permiso.tipo_otros;
+            document.getElementById('tipoOtrosContainer').style.display = 'block';
+        }
+        
+        // Disparar eventos para cargar datos dependientes
+        if (permiso.planta_id) {
+            // Simular evento de cambio de planta para cargar aerogeneradores y personal
+            const plantaSelect = document.getElementById('planta');
+            const fakeEvent = { target: plantaSelect };
+            await handlePlantaChange(fakeEvent);
+            
+            // Seleccionar aerogenerador
+            if (permiso.aerogenerador_id) {
+                document.getElementById('aerogenerador').value = permiso.aerogenerador_id;
+            }
+            
+            // Seleccionar jefe de faena
+            if (permiso.jefe_faena_id) {
+                document.getElementById('jefeFaena').value = permiso.jefe_faena_id;
+            }
+            
+            // Seleccionar supervisor
+            if (permiso.supervisor_parque_id) {
+                document.getElementById('supervisorParque').value = permiso.supervisor_parque_id;
+            }
+        }
+        
+        // Marcar actividades seleccionadas
+        if (permiso.actividades_ids) {
+            const actividadIds = permiso.actividades_ids.split(',').map(id => id.trim());
+            actividadIds.forEach(actividadId => {
+                const checkbox = document.querySelector(\`input[name="actividades"][value="\${actividadId}"]\`);
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            });
+            
+            // Actualizar matriz de riesgos
+            updateMatrizDisplay();
+        }
+        
+        // Cargar personal seleccionado
+        if (permiso.personal_ids) {
+            personalSeleccionado = [];
+            const personalIds = permiso.personal_ids.split(',').map(id => id.trim());
+            
+            // Buscar el personal en los datos cargados
+            const plantaNombre = document.querySelector('#planta option:checked')?.textContent;
+            if (plantaNombre && personalByParque[plantaNombre]) {
+                personalIds.forEach(personalId => {
+                    const persona = personalByParque[plantaNombre].find(p => p.id.toString() === personalId);
+                    if (persona) {
+                        personalSeleccionado.push(persona);
+                    }
+                });
+                
+                // Actualizar la vista
+                renderPersonalSeleccionado();
+            }
+        }
+    }
+    
+    // Sistema de seguridad activo - D1 Database Edition
   `;
 }
 

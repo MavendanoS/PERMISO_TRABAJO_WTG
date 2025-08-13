@@ -1,12 +1,12 @@
 // src/core/routes/api.js
-import { handleLogin, handleChangePassword, handleFixPasswords, handleListUsers, handleDebugPassword } from '../handlers/auth.js';
+import { handleLogin, handleChangePassword } from '../handlers/auth.js';
 import {
   handleUsers, handlePersonal, handlePersonalByParque, handleSupervisores,
 } from '../handlers/users.js';
 import { handleParques, handleAerogeneradores, handleActividades } from '../handlers/catalog.js';
 import { handleMatrizRiesgos } from '../handlers/matrix.js';
 import {
-  handlePermisos, handleAprobarPermiso, handleCerrarPermiso,
+  handlePermisos, handlePermisoDetalle, handleAprobarPermiso, handleCerrarPermiso,
   handleGenerateRegister, handleHealth, handleExportarPermisoExcel, handleExportarPermisoPdf,
 } from '../handlers/permits.js';
 import generateTomaConocimientoPDF from '../handlers/pdf.js';
@@ -18,7 +18,7 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
   
   try {
     // Endpoints públicos que no requieren autenticación
-    const publicEndpoints = ['login', 'health', 'fix-passwords', 'list-users', 'debug-password'];
+    const publicEndpoints = ['login', 'health'];
     let currentUser = null;
     
     // Verificar autenticación para endpoints protegidos
@@ -59,20 +59,14 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleLogin(request, corsHeaders, env, services);
       case 'change-password':
         return await handleChangePassword(request, corsHeaders, env, services);
-      case 'fix-passwords':
-        return await handleFixPasswords(request, corsHeaders, env);
-      case 'list-users':
-        return await handleListUsers(request, corsHeaders, env);
-      case 'debug-password':
-        return await handleDebugPassword(request, corsHeaders, env, services);
       case 'users':
         return await handleUsers(request, corsHeaders, env);
       case 'personal':
         return await handlePersonal(request, corsHeaders, env);
       case 'personal-by-parque':
-        return await handlePersonalByParque(request, corsHeaders, env);
+        return await handlePersonalByParque(request, corsHeaders, env, currentUser);
       case 'supervisores':
-        return await handleSupervisores(request, corsHeaders, env);
+        return await handleSupervisores(request, corsHeaders, env, currentUser);
       case 'parques':
         return await handleParques(request, corsHeaders, env);
       case 'aerogeneradores':
@@ -83,6 +77,8 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleActividades(request, corsHeaders, env);
       case 'permisos':
         return await handlePermisos(request, corsHeaders, env, currentUser, services);
+      case 'permiso-detalle':
+        return await handlePermisoDetalle(request, corsHeaders, env, currentUser, services);
       case 'cerrar-permiso':
         return await handleCerrarPermiso(request, corsHeaders, env, currentUser, services);
       case 'aprobar-permiso':
@@ -90,9 +86,9 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
       case 'generate-register':
         return await handleGenerateRegister(request, corsHeaders, env);
       case 'exportar-permiso-excel':
-        return await handleExportarPermisoExcel(request, corsHeaders, env);
+        return await handleExportarPermisoExcel(request, corsHeaders, env, currentUser, services);
       case 'exportar-permiso-pdf':
-        return await handleExportarPermisoPdf(request, corsHeaders, env);
+        return await handleExportarPermisoPdf(request, corsHeaders, env, currentUser, services);
       case 'health':
         return await handleHealth(request, corsHeaders, env);
       default:
