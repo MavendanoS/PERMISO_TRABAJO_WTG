@@ -519,6 +519,55 @@ export function getStyles() {
         background: var(--primary-color);
     }
     
+    /* Menú desplegable de exportación */
+    .export-dropdown {
+        display: inline-block;
+        position: relative;
+    }
+    
+    .dropdown-toggle:after {
+        content: '';
+        display: none;
+    }
+    
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 1000;
+        min-width: 160px;
+        background: white;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-lg);
+        margin-top: 2px;
+    }
+    
+    .dropdown-menu a {
+        display: block;
+        padding: 8px 12px;
+        text-decoration: none;
+        color: var(--text-primary);
+        font-size: 12px;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .dropdown-menu a:last-child {
+        border-bottom: none;
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+    }
+    
+    .dropdown-menu a:first-child {
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+    }
+    
+    .dropdown-menu a:hover {
+        background: var(--bg-secondary);
+        color: var(--primary-color);
+        transform: translateX(2px);
+    }
+    
     /* Pestañas dentro de las cards */
     .card-tabs {
         display: flex;

@@ -923,6 +923,21 @@ export function getWebAppScript() {
                             \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
                         
                         \${permiso.estado === 'CERRADO' ? 
+                            \`<div class="export-dropdown" style="display: inline-block; position: relative; margin-left: 8px;">
+                                <button class="btn btn-success btn-small dropdown-toggle" onclick="toggleExportMenu(\${permiso.id})">
+                                    📁 EXPORTAR ▼
+                                </button>
+                                <div class="dropdown-menu" id="exportMenu_\${permiso.id}" style="display: none;">
+                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, '\${permiso.numero_pt}', 'excel')">
+                                        📊 Excel (para SAP)
+                                    </a>
+                                    <a href="#" onclick="exportarArchivo(\${permiso.id}, '\${permiso.numero_pt}', 'pdf')">
+                                        📄 PDF (auditoría)
+                                    </a>
+                                </div>
+                            </div>\` : ''}
+                        
+                        \${permiso.estado === 'CERRADO' ? 
                             \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
                             (permiso.estado === 'CREADO' && !esEnel ? 
                                 \`<span style="color: var(--warning); font-size: 12px; font-weight: 500;">⏳ Pendiente de aprobación</span>\` : '')
@@ -1242,6 +1257,74 @@ export function getWebAppScript() {
         });
     }
     
+    // ========================================================================
+    // FUNCIONES DE EXPORTACIÓN
+    // ========================================================================
+    
+    // Función para mostrar/ocultar menú de exportación
+    window.toggleExportMenu = function(permisoId) {
+        // Cerrar otros menús abiertos
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            if (menu.id !== \`exportMenu_\${permisoId}\`) {
+                menu.style.display = 'none';
+            }
+        });
+        
+        const menu = document.getElementById(\`exportMenu_\${permisoId}\`);
+        if (menu) {
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+    }
+    
+    // Función para exportar archivo (Excel o PDF)
+    window.exportarArchivo = async function(permisoId, numeroPT, tipo) {
+        // Cerrar menú
+        const menu = document.getElementById(\`exportMenu_\${permisoId}\`);
+        if (menu) menu.style.display = 'none';
+        
+        try {
+            const endpoint = tipo === 'excel' ? '/exportar-permiso-excel' : '/exportar-permiso-pdf';
+            const extension = tipo === 'excel' ? 'xlsx' : 'pdf';
+            const descripcion = tipo === 'excel' ? 'Excel_SAP' : 'PDF_Auditoria';
+            
+            // Realizar petición
+            const response = await fetch(\`\${API_BASE}\${endpoint}?id=\${permisoId}\`, {
+                headers: {
+                    'Authorization': 'Bearer ' + authToken,
+                    'X-Session-Id': sessionId
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Error al generar el archivo');
+            }
+            
+            // Descargar archivo
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = \`Permiso_\${numeroPT}_\${descripcion}.\${extension}\`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+        } catch (error) {
+            console.error('Error exportando archivo:', error);
+            alert('Error al exportar archivo: ' + error.message);
+        }
+    }
+    
+    // Cerrar menús al hacer click fuera
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.export-dropdown')) {
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                menu.style.display = 'none';
+            });
+        }
+    });
+    
     function clearSearch() {
         document.getElementById('searchPermiso').value = '';
         displayPermisos();
@@ -1538,6 +1621,77 @@ export function getWebAppScript() {
     });
     
     resetInactivityTimer();
+    
+    // ========================================================================
+    // FUNCIONES DE EXPORTACIÓN
+    // ========================================================================
+    
+    window.toggleExportMenu = function(permisoId) {
+        const menu = document.getElementById(\`exportMenu-\${permisoId}\`);
+        
+        // Cerrar otros menus abiertos
+        document.querySelectorAll('.dropdown-menu').forEach(m => {
+            if (m.id !== \`exportMenu-\${permisoId}\`) {
+                m.style.display = 'none';
+            }
+        });
+        
+        // Toggle el menu actual
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    };
+    
+    window.exportarArchivo = async function(permisoId, formato) {
+        try {
+            // Cerrar el menu
+            document.getElementById(\`exportMenu-\${permisoId}\`).style.display = 'none';
+            
+            let endpoint, filename;
+            if (formato === 'excel') {
+                endpoint = \`\${API_BASE}/exportar-permiso-excel?id=\${permisoId}\`;
+                filename = \`PT_\${permisoId}_SAP.csv\`;
+            } else {
+                endpoint = \`\${API_BASE}/exportar-permiso-pdf?id=\${permisoId}\`;
+                filename = \`PT_\${permisoId}_Auditoria.html\`;
+            }
+            
+            const response = await fetch(endpoint, {
+                headers: {
+                    'Authorization': \`Bearer \${localStorage.getItem('auth_token')}\`
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(\`Error HTTP: \${response.status}\`);
+            }
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            // Cleanup
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showMessage(\`Archivo \${formato.toUpperCase()} descargado exitosamente\`, 'success');
+            
+        } catch (error) {
+            console.error('Error exportando:', error);
+            showMessage(\`Error al generar archivo \${formato.toUpperCase()}: \${error.message}\`, 'error');
+        }
+    };
+    
+    // Cerrar menus al hacer clic fuera
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.export-dropdown')) {
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                menu.style.display = 'none';
+            });
+        }
+    });
     
     console.log('Sistema de seguridad activo - D1 Database Edition');
   `;

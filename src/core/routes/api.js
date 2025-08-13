@@ -7,7 +7,7 @@ import { handleParques, handleAerogeneradores, handleActividades } from '../hand
 import { handleMatrizRiesgos } from '../handlers/matrix.js';
 import {
   handlePermisos, handleAprobarPermiso, handleCerrarPermiso,
-  handleGenerateRegister, handleHealth,
+  handleGenerateRegister, handleHealth, handleExportarPermisoExcel, handleExportarPermisoPdf,
 } from '../handlers/permits.js';
 import generateTomaConocimientoPDF from '../handlers/pdf.js';
 
@@ -83,6 +83,10 @@ export async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleAprobarPermiso(request, corsHeaders, env, currentUser, services);
       case 'generate-register':
         return await handleGenerateRegister(request, corsHeaders, env);
+      case 'exportar-permiso-excel':
+        return await handleExportarPermisoExcel(request, corsHeaders, env);
+      case 'exportar-permiso-pdf':
+        return await handleExportarPermisoPdf(request, corsHeaders, env);
       case 'health':
         return await handleHealth(request, corsHeaders, env);
       default:

@@ -588,11 +588,337 @@ export async function handleHealth(request, corsHeaders, env) {
   }
 }
 
+export async function handleExportarPermisoExcel(request, corsHeaders, env) {
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const permisoId = url.searchParams.get('id');
+    
+    if (!permisoId) {
+      return new Response(JSON.stringify({ error: 'ID del permiso requerido' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener datos completos del permiso
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT 
+        p.*,
+        pc.fecha_inicio_trabajos,
+        pc.fecha_fin_trabajos,
+        pc.fecha_parada_turbina,
+        pc.fecha_puesta_marcha_turbina,
+        pc.observaciones_cierre,
+        pc.usuario_cierre,
+        pc.fecha_cierre
+      FROM permisos_trabajo p
+      LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
+      WHERE p.id = ?
+    `).bind(permisoId).first();
+    
+    if (!permiso) {
+      return new Response(JSON.stringify({ error: 'Permiso no encontrado' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener personal
+    const personalResult = await env.DB_PERMISOS.prepare(`
+      SELECT personal_nombre, personal_empresa, personal_rol
+      FROM permiso_personal
+      WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    // Obtener actividades
+    const actividadesResult = await env.DB_PERMISOS.prepare(`
+      SELECT actividad_nombre, tipo_actividad
+      FROM permiso_actividades
+      WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    // Obtener materiales
+    const materialesResult = await env.DB_PERMISOS.prepare(`
+      SELECT descripcion, cantidad, propietario, almacen, numero_item, numero_serie
+      FROM permiso_materiales
+      WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    // Generar datos para Excel compatible con SAP
+    const excelData = {
+      'Información General': [
+        ['Campo', 'Valor'],
+        ['Número PT', permiso.numero_pt || ''],
+        ['Planta', permiso.planta_nombre || ''],
+        ['Aerogenerador', permiso.aerogenerador_nombre || ''],
+        ['Estado', permiso.estado || ''],
+        ['Fecha Creación', permiso.fecha_creacion || ''],
+        ['Jefe de Faena', permiso.jefe_faena_nombre || ''],
+        ['Supervisor Parque', permiso.supervisor_parque_nombre || ''],
+        ['Tipo Mantenimiento', permiso.tipo_mantenimiento || ''],
+        ['Descripción', permiso.descripcion || '']
+      ],
+      'Tiempos': [
+        ['Evento', 'Fecha/Hora'],
+        ['Inicio Trabajos', permiso.fecha_inicio_trabajos || ''],
+        ['Fin Trabajos', permiso.fecha_fin_trabajos || ''],
+        ['Parada Turbina', permiso.fecha_parada_turbina || ''],
+        ['Puesta en Marcha', permiso.fecha_puesta_marcha_turbina || '']
+      ],
+      'Personal': [
+        ['Nombre', 'Empresa', 'Rol'],
+        ...(personalResult.results || []).map(p => [p.personal_nombre, p.personal_empresa, p.personal_rol])
+      ],
+      'Actividades': [
+        ['Actividad', 'Tipo'],
+        ...(actividadesResult.results || []).map(a => [a.actividad_nombre, a.tipo_actividad])
+      ],
+      'Materiales': [
+        ['Descripción', 'Cantidad', 'Propietario', 'Almacén', 'N° Item', 'N° Serie'],
+        ...(materialesResult.results || []).map(m => [
+          m.descripcion, m.cantidad, m.propietario, m.almacen, m.numero_item || '', m.numero_serie || ''
+        ])
+      ]
+    };
+    
+    // Generar CSV simple para compatibilidad con SAP
+    let csvContent = '';
+    
+    Object.keys(excelData).forEach(sheetName => {
+      csvContent += `\n\n[${sheetName}]\n`;
+      excelData[sheetName].forEach(row => {
+        csvContent += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',') + '\n';
+      });
+    });
+    
+    return new Response(csvContent, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="PT_${permiso.numero_pt}_${new Date().toISOString().split('T')[0]}.csv"`,
+        ...corsHeaders
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error exportando Excel:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handleExportarPermisoPdf(request, corsHeaders, env) {
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const permisoId = url.searchParams.get('id');
+    
+    if (!permisoId) {
+      return new Response(JSON.stringify({ error: 'ID del permiso requerido' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener datos completos del permiso (misma query que Excel)
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT 
+        p.*,
+        pc.fecha_inicio_trabajos,
+        pc.fecha_fin_trabajos,
+        pc.fecha_parada_turbina,
+        pc.fecha_puesta_marcha_turbina,
+        pc.observaciones_cierre,
+        pc.usuario_cierre,
+        pc.fecha_cierre
+      FROM permisos_trabajo p
+      LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
+      WHERE p.id = ?
+    `).bind(permisoId).first();
+    
+    if (!permiso) {
+      return new Response(JSON.stringify({ error: 'Permiso no encontrado' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener datos relacionados
+    const personalResult = await env.DB_PERMISOS.prepare(`
+      SELECT personal_nombre, personal_empresa, personal_rol
+      FROM permiso_personal WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    const actividadesResult = await env.DB_PERMISOS.prepare(`
+      SELECT actividad_nombre, tipo_actividad
+      FROM permiso_actividades WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    const materialesResult = await env.DB_PERMISOS.prepare(`
+      SELECT descripcion, cantidad, propietario, almacen
+      FROM permiso_materiales WHERE permiso_id = ?
+    `).bind(permisoId).all();
+    
+    // Logo Enel en base64
+    const logoEnel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAAAllBMVEX///8AcbIAbrAAabAAZ68AZq4AYq0AY60AX6wAXKsAWaoAVqkAVakATqUAS6QARaIAPp4ANJoAM5kALpYAK5UAJpMAH48AGowAFIgAEYcACIIAAH4AAHwAAHkAAHX7/f719/vw9Pjp7/Xh6fHY4+zR3unI2ObAz+G5ydy0xNqswNamuNKbuM+Rr8uKqsiEpMV+n8J4mcBylr1rirhef7MN';
+    
+    // Generar HTML para PDF
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Permiso de Trabajo ${permiso.numero_pt} - Exportación</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0066cc; padding-bottom: 20px; }
+        .logo { width: 120px; height: auto; margin-bottom: 10px; }
+        .title { color: #0066cc; font-size: 24px; font-weight: bold; }
+        .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
+        .section { margin-bottom: 25px; }
+        .section-title { background: #0066cc; color: white; padding: 8px 12px; font-weight: bold; margin-bottom: 10px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .info-item { margin-bottom: 8px; }
+        .info-label { font-weight: bold; color: #0066cc; }
+        .info-value { margin-left: 10px; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .table th { background: #f0f0f0; padding: 8px; border: 1px solid #ddd; font-weight: bold; }
+        .table td { padding: 8px; border: 1px solid #ddd; }
+        .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #666; }
+        @media print { body { margin: 0; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${logoEnel}" alt="ENEL" class="logo">
+        <div class="title">REPORTE DE PERMISO DE TRABAJO</div>
+        <div class="subtitle">${permiso.numero_pt} - ${permiso.planta_nombre}</div>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">INFORMACIÓN GENERAL</div>
+        <div class="info-grid">
+            <div>
+                <div class="info-item"><span class="info-label">Número PT:</span><span class="info-value">${permiso.numero_pt || ''}</span></div>
+                <div class="info-item"><span class="info-label">Planta:</span><span class="info-value">${permiso.planta_nombre || ''}</span></div>
+                <div class="info-item"><span class="info-label">Aerogenerador:</span><span class="info-value">${permiso.aerogenerador_nombre || ''}</span></div>
+                <div class="info-item"><span class="info-label">Estado:</span><span class="info-value">${permiso.estado || ''}</span></div>
+            </div>
+            <div>
+                <div class="info-item"><span class="info-label">Jefe de Faena:</span><span class="info-value">${permiso.jefe_faena_nombre || ''}</span></div>
+                <div class="info-item"><span class="info-label">Supervisor:</span><span class="info-value">${permiso.supervisor_parque_nombre || 'N/A'}</span></div>
+                <div class="info-item"><span class="info-label">Tipo:</span><span class="info-value">${permiso.tipo_mantenimiento || ''}</span></div>
+                <div class="info-item"><span class="info-label">Fecha Creación:</span><span class="info-value">${permiso.fecha_creacion || ''}</span></div>
+            </div>
+        </div>
+        <div class="info-item" style="margin-top: 15px;">
+            <span class="info-label">Descripción:</span><br>
+            <div style="margin-top: 5px; padding: 10px; background: #f9f9f9; border-left: 4px solid #0066cc;">
+                ${permiso.descripcion || 'Sin descripción'}
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">TIEMPOS DE TRABAJO</div>
+        <table class="table">
+            <tr><th>Evento</th><th>Fecha y Hora</th></tr>
+            <tr><td>Inicio de Trabajos</td><td>${permiso.fecha_inicio_trabajos || 'No registrado'}</td></tr>
+            <tr><td>Fin de Trabajos</td><td>${permiso.fecha_fin_trabajos || 'No registrado'}</td></tr>
+            <tr><td>Parada Turbina</td><td>${permiso.fecha_parada_turbina || 'No aplica'}</td></tr>
+            <tr><td>Puesta en Marcha</td><td>${permiso.fecha_puesta_marcha_turbina || 'No aplica'}</td></tr>
+        </table>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">PERSONAL ASIGNADO</div>
+        <table class="table">
+            <tr><th>Nombre</th><th>Empresa</th><th>Rol</th></tr>
+            ${(personalResult.results || []).map(p => 
+              `<tr><td>${p.personal_nombre}</td><td>${p.personal_empresa}</td><td>${p.personal_rol}</td></tr>`
+            ).join('')}
+            ${(personalResult.results || []).length === 0 ? '<tr><td colspan="3">No hay personal registrado</td></tr>' : ''}
+        </table>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">ACTIVIDADES REALIZADAS</div>
+        <table class="table">
+            <tr><th>Actividad</th><th>Tipo</th></tr>
+            ${(actividadesResult.results || []).map(a => 
+              `<tr><td>${a.actividad_nombre}</td><td>${a.tipo_actividad}</td></tr>`
+            ).join('')}
+            ${(actividadesResult.results || []).length === 0 ? '<tr><td colspan="2">No hay actividades registradas</td></tr>' : ''}
+        </table>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">MATERIALES UTILIZADOS</div>
+        <table class="table">
+            <tr><th>Descripción</th><th>Cantidad</th><th>Propietario</th><th>Almacén</th></tr>
+            ${(materialesResult.results || []).map(m => 
+              `<tr><td>${m.descripcion}</td><td>${m.cantidad}</td><td>${m.propietario}</td><td>${m.almacen}</td></tr>`
+            ).join('')}
+            ${(materialesResult.results || []).length === 0 ? '<tr><td colspan="4">No hay materiales registrados</td></tr>' : ''}
+        </table>
+    </div>
+    
+    ${permiso.observaciones_cierre ? `
+    <div class="section">
+        <div class="section-title">OBSERVACIONES DE CIERRE</div>
+        <div style="padding: 15px; background: #f9f9f9; border: 1px solid #ddd; margin-top: 10px;">
+            ${permiso.observaciones_cierre}
+        </div>
+    </div>
+    ` : ''}
+    
+    <div class="footer">
+        <p>Documento generado el ${new Date().toLocaleString('es-CL')} - PT Wind - Sistema de Gestión de Permisos de Trabajo</p>
+        <p>Generado con Claude Code</p>
+    </div>
+</body>
+</html>
+    `;
+    
+    return new Response(htmlContent, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `inline; filename="PT_${permiso.numero_pt}_Auditoria.html"`,
+        ...corsHeaders
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error exportando PDF:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
 export default {
   handlePermisos,
   handleAprobarPermiso,
   handleCerrarPermiso,
   handleGenerateRegister,
-  handleHealth
+  handleHealth,
+  handleExportarPermisoExcel,
+  handleExportarPermisoPdf
 };
 
