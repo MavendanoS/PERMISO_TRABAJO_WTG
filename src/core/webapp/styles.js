@@ -522,6 +522,33 @@ export function getStyles() {
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .permiso-info-value ul {
+        list-style: none;
+        padding: 0;
+        margin: 4px 0;
+    }
+    
+    .permiso-info-value li {
+        margin: 4px 0;
+        padding-left: 16px;
+        position: relative;
+    }
+    
+    .permiso-info-value li:before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: var(--accent-color);
+    }
+    
+    .estado-pendiente {
+        background: rgba(243, 156, 18, 0.1);
+        color: var(--warning-color);
+        border: 1px solid rgba(243, 156, 18, 0.2);
     }
     
     .input-others {

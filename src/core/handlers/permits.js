@@ -191,7 +191,8 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
   
   // GET permisos
   try {
-    const result = await env.DB_PERMISOS.prepare(`
+    // Primero obtenemos los permisos con información básica
+    const permisosResult = await env.DB_PERMISOS.prepare(`
       SELECT 
         p.*,
         pc.fecha_inicio_trabajos,
@@ -202,20 +203,50 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
         pc.usuario_cierre,
         pc.fecha_cierre,
         GROUP_CONCAT(DISTINCT pp.personal_nombre || ' (' || pp.personal_empresa || ')') as personal_asignado,
-        GROUP_CONCAT(DISTINCT pp.personal_id) as personal_ids,
-        GROUP_CONCAT(DISTINCT pa.actividad_nombre) as actividades
+        GROUP_CONCAT(DISTINCT pp.personal_id) as personal_ids
       FROM permisos_trabajo p
       LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
       LEFT JOIN permiso_personal pp ON p.id = pp.permiso_id
-      LEFT JOIN permiso_actividades pa ON p.id = pa.permiso_id
       GROUP BY p.id
       ORDER BY p.fecha_creacion DESC
       LIMIT 100
     `).all();
     
+    const permisos = permisosResult.results || [];
+    
+    // Para cada permiso, obtener actividades y materiales
+    for (let permiso of permisos) {
+      // Obtener actividades
+      const actividadesResult = await env.DB_PERMISOS.prepare(`
+        SELECT actividad_nombre, actividad_tipo, riesgo_asociado, medidas_control
+        FROM permiso_actividades
+        WHERE permiso_id = ?
+      `).bind(permiso.id).all();
+      
+      permiso.actividades_detalle = actividadesResult.results || [];
+      
+      // Obtener materiales
+      const materialesResult = await env.DB_PERMISOS.prepare(`
+        SELECT material_nombre, material_cantidad, material_unidad
+        FROM permiso_materiales
+        WHERE permiso_id = ?
+      `).bind(permiso.id).all();
+      
+      permiso.materiales_detalle = materialesResult.results || [];
+      
+      // Obtener matriz de riesgos
+      const matrizResult = await env.DB_PERMISOS.prepare(`
+        SELECT riesgo_descripcion, control_medida
+        FROM permiso_matriz_riesgos
+        WHERE permiso_id = ?
+      `).bind(permiso.id).all();
+      
+      permiso.matriz_riesgos_detalle = matrizResult.results || [];
+    }
+    
     return new Response(JSON.stringify({ 
       success: true,
-      permisos: result.results || []
+      permisos: permisos
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
