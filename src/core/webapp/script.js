@@ -1076,19 +1076,23 @@ export function getWebAppScript() {
                                     <table class="materials-table">
                                         <thead>
                                             <tr>
-                                                <th style="width: 50px;">#</th>
+                                                <th style="width: 40px;">#</th>
                                                 <th>Material/Herramienta</th>
-                                                <th style="width: 80px;">Cantidad</th>
-                                                <th style="width: 80px;">Unidad</th>
+                                                <th style="width: 60px;">Cant.</th>
+                                                <th style="width: 80px;">Propietario</th>
+                                                <th style="width: 70px;">Almacén</th>
+                                                <th style="width: 70px;">N° Item</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             \${permiso.materiales_detalle.map((mat, index) => \`
                                                 <tr>
                                                     <td>\${index + 1}</td>
-                                                    <td>\${mat.material_nombre}</td>
-                                                    <td>\${mat.material_cantidad}</td>
-                                                    <td>\${mat.material_unidad || 'und'}</td>
+                                                    <td>\${mat.material_nombre || 'Sin descripción'}</td>
+                                                    <td>\${mat.material_cantidad || 1}</td>
+                                                    <td style="font-size: 11px;">\${mat.material_propietario || 'N/A'}</td>
+                                                    <td style="font-size: 11px;">\${mat.material_almacen || 'N/A'}</td>
+                                                    <td style="font-size: 11px;">\${mat.numero_item || 'N/A'}</td>
                                                 </tr>
                                             \`).join('')}
                                         </tbody>

@@ -225,16 +225,20 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
       
       permiso.actividades_detalle = actividadesResult.results || [];
       
-      // Obtener materiales - estas tablas pueden no existir aún
+      // Obtener materiales (usando estructura correcta de la tabla)
       try {
         const materialesResult = await env.DB_PERMISOS.prepare(`
-          SELECT material_nombre, material_cantidad, material_unidad
+          SELECT descripcion as material_nombre, cantidad as material_cantidad, 
+                 propietario as material_propietario, almacen as material_almacen,
+                 numero_item, numero_serie, observaciones_material
           FROM permiso_materiales
           WHERE permiso_id = ?
+          ORDER BY descripcion ASC
         `).bind(permiso.id).all();
         
         permiso.materiales_detalle = materialesResult.results || [];
       } catch (e) {
+        console.error('Error cargando materiales para permiso', permiso.id, ':', e);
         permiso.materiales_detalle = [];
       }
       
