@@ -1394,7 +1394,7 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env, curren
     ` : ''}
     
     <div class="footer">
-        <p>Documento generado el ${new Date().toLocaleString('es-CL')} - PT Wind - Sistema de Gestión de Permisos de Trabajo</p>
+        <p>Documento generado el ${new Date().toLocaleString('es-CL', { timeZone: 'America/Santiago' })} - PT Wind - Sistema de Gestión de Permisos de Trabajo</p>
         <p>© Enel Green Power - Todos los derechos reservados</p>
     </div>
     
