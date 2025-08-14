@@ -34,8 +34,8 @@ export async function handleAerogeneradores(request, corsHeaders, env) {
     let params = [];
     
     if (parqueNombre) {
-      query += ' WHERE Plant_Name LIKE ? OR Plant_Name = ?';
-      params.push(`%${parqueNombre}%`, parqueNombre);
+      query += ' WHERE Plant_Name = ?';
+      params.push(parqueNombre);
     }
     
     query += ' ORDER BY WTG_Name ASC';

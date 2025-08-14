@@ -1404,7 +1404,8 @@ export function getWebAppScript() {
         try {
             const endpoint = tipo === 'excel' ? '/exportar-permiso-excel' : '/exportar-permiso-pdf';
             const extension = tipo === 'excel' ? 'xlsx' : 'pdf';
-            const descripcion = tipo === 'excel' ? 'Excel_SAP' : 'PDF_Auditoria';
+            const fechaActual = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            const descripcion = '_' + fechaActual;
             
             // Realizar petición
             const response = await fetch(\`\${API_BASE}\${endpoint}?id=\${permisoId}\`, {
@@ -1423,7 +1424,7 @@ export function getWebAppScript() {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = \`Permiso_\${numeroPT}_\${descripcion}.\${extension}\`;
+            a.download = \`\${numeroPT}\${descripcion}.\${extension}\`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1816,13 +1817,14 @@ export function getWebAppScript() {
             document.getElementById('exportExcelBtn').disabled = true;
             document.getElementById('exportPdfBtn').disabled = true;
             
+            const fechaActual = new Date().toISOString().split('T')[0].replace(/-/g, '');
             let endpoint, filename;
             if (formato === 'excel') {
                 endpoint = \`\${API_BASE}/exportar-permiso-excel?id=\${currentExportPermisoId}\`;
-                filename = \`\${currentExportPermisoInfo}_SAP.csv\`;
+                filename = \`\${currentExportPermisoInfo}_\${fechaActual}.csv\`;
             } else {
                 endpoint = \`\${API_BASE}/exportar-permiso-pdf?id=\${currentExportPermisoId}\`;
-                filename = \`\${currentExportPermisoInfo}_Auditoria.html\`;
+                filename = \`\${currentExportPermisoInfo}_\${fechaActual}.html\`;
             }
             
             const response = await fetch(endpoint, {

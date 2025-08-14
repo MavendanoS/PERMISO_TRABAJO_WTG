@@ -362,7 +362,7 @@ export function getWebApp() {
                 '<button id="exportExcelBtn" class="btn" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; font-size: 16px;">' +
                     '<span style="font-size: 24px;">📊</span>' +
                     '<div style="text-align: left;">' +
-                        '<div style="font-weight: 600;">Excel (CSV)</div>' +
+                        '<div style="font-weight: 600;">Excel</div>' +
                     '</div>' +
                 '</button>' +
                 
