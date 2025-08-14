@@ -9,7 +9,11 @@
     "deploy": "wrangler deploy",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
-  "keywords": ["cloudflare-worker", "permisos-trabajo", "modular"],
+  "keywords": [
+    "cloudflare-worker",
+    "permisos-trabajo",
+    "modular"
+  ],
   "author": "PT Wind Team",
   "license": "MIT",
   "devDependencies": {
