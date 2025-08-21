@@ -954,6 +954,8 @@ export function getWebAppScript() {
         let estadoTexto = permiso.estado;
         if (permiso.estado === 'CREADO' && !esEnel) {
             estadoTexto = 'PENDIENTE DE APROBACIÓN';
+        } else if (permiso.estado === 'CERRADO_PENDIENTE_APROBACION') {
+            estadoTexto = 'CERRADO - PENDIENTE APROBACIÓN';
         }
         
         // Crear estructura de tarjeta con frente y reverso
@@ -979,6 +981,12 @@ export function getWebAppScript() {
                             <div class="permiso-info-label">Jefe de Faena</div>
                             <div class="permiso-info-value">\${permiso.jefe_faena_nombre}</div>
                         </div>
+                        \${permiso.supervisor_parque_nombre ? \`
+                        <div class="permiso-info-item">
+                            <div class="permiso-info-label">Supervisor Responsable</div>
+                            <div class="permiso-info-value">\${permiso.supervisor_parque_nombre}</div>
+                        </div>
+                        \` : ''}
                         <div class="permiso-info-item">
                             <div class="permiso-info-label">Fecha Creación</div>
                             <div class="permiso-info-value">\${formatDate(permiso.fecha_creacion)}</div>
@@ -1011,15 +1019,15 @@ export function getWebAppScript() {
                         \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
                             \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
                         
-                        \${(permiso.estado === 'CERRADO' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
                             \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
                         
-                        \${permiso.estado === 'CERRADO' ? 
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? 
                             \`<button class="btn btn-success btn-small" onclick="openExportModal(\${permiso.id}, '\${permiso.numero_pt}')" style="margin-left: 8px;">
                                 📁 EXPORTAR
                             </button>\` : ''}
                         
-                        \${permiso.estado === 'CERRADO' ? 
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? 
                             \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
                             (permiso.estado === 'CREADO' && !esEnel ? 
                                 \`<span style="color: var(--warning); font-size: 12px; font-weight: 500;">⏳ Pendiente de aprobación</span>\` : '')
@@ -1205,7 +1213,7 @@ export function getWebAppScript() {
                         
                         <!-- Tab: Cierre -->
                         <div class="tab-pane" data-tab="cierre" style="display: none;">
-                            \${permiso.estado === 'CERRADO' ? \`
+                            \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? \`
                                 <div class="cierre-grid">
                                     <!-- Columna Izquierda: Responsable -->
                                     <div class="cierre-column">
@@ -1224,6 +1232,21 @@ export function getWebAppScript() {
                                                 <div class="cierre-value">\${formatDate(permiso.fecha_cierre)}</div>
                                             </div>
                                         </div>
+                                        
+                                        <!-- Estado de Aprobación del Cierre -->
+                                        <div class="cierre-item aprobacion">
+                                            <div class="cierre-icon">\${permiso.estado_aprobacion_cierre === 'APROBADO' ? '✅' : '⏳'}</div>
+                                            <div class="cierre-content">
+                                                <div class="cierre-label">Estado Aprobación</div>
+                                                <div class="cierre-value \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'aprobado' : 'pendiente'}">
+                                                    \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'APROBADO' : 'PENDIENTE'}
+                                                </div>
+                                                \${permiso.usuario_aprobador_cierre_nombre ? \`
+                                                    <div class="cierre-sub-info">Por: \${permiso.usuario_aprobador_cierre_nombre}</div>
+                                                    <div class="cierre-sub-info">\${formatDate(permiso.fecha_aprobacion_cierre)}</div>
+                                                \` : ''}
+                                            </div>
+                                        </div>
                                     </div>
                                     
                                     <!-- Columna Derecha: Observaciones -->
@@ -1234,6 +1257,15 @@ export function getWebAppScript() {
                                                 <div class="cierre-observaciones">\${permiso.observaciones_cierre || 'Sin observaciones registradas'}</div>
                                             </div>
                                         </div>
+                                        
+                                        <!-- Botón de Aprobación si es necesario -->
+                                        \${permiso.estado === 'CERRADO_PENDIENTE_APROBACION' && (currentUser.rol === 'Admin' || currentUser.rol === 'Supervisor') ? \`
+                                            <div class="cierre-actions" style="margin-top: 15px;">
+                                                <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">
+                                                    ✅ APROBAR CIERRE
+                                                </button>
+                                            </div>
+                                        \` : ''}
                                     </div>
                                 </div>
                             \` : \`
@@ -1514,6 +1546,34 @@ export function getWebAppScript() {
         } catch (error) {
             console.error('Error aprobando permiso:', error);
             alert('Error al aprobar el permiso');
+        }
+    };
+    
+    // Función para abrir modal básico de aprobación de cierre
+    window.openAprobarCierreModal = async function(permisoId, numeroPT) {
+        const decision = confirm('¿Desea APROBAR el cierre de este permiso?\n\nPermiso: ' + numeroPT + '\n\nOK = Aprobar\nCancelar = Rechazar');
+        const accion = decision ? 'aprobar' : 'rechazar';
+        const observaciones = prompt('Observaciones del supervisor (opcional):') || '';
+        
+        try {
+            const response = await ClientSecurity.makeSecureRequest('/aprobar-cierre-permiso', {
+                method: 'POST',
+                body: JSON.stringify({
+                    permisoId: permisoId,
+                    accion: accion,
+                    observaciones: observaciones
+                })
+            });
+            
+            if (response.success) {
+                alert('Decisión registrada exitosamente');
+                await loadPermisos();
+            } else {
+                alert('Error: ' + (response.error || 'Error desconocido'));
+            }
+        } catch (error) {
+            console.error('Error en aprobación:', error);
+            alert('Error de conexión');
         }
     };
     
@@ -1838,38 +1898,58 @@ export function getWebAppScript() {
                 throw new Error(errorData.error || \`Error HTTP: \${response.status}\`);
             }
             
-            document.getElementById('exportStatusText').textContent = 'Descargando archivo...';
-            
-            const blob = await response.blob();
-            
-            // Verificar que el blob tiene contenido
-            if (blob.size === 0) {
-                throw new Error('El archivo generado está vacío');
-            }
-            
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            
-            // Cleanup
-            setTimeout(() => {
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            }, 100);
-            
-            // Reset UI y cerrar modal después de la descarga
-            document.getElementById('exportStatusText').textContent = 'Descarga completada';
-            setTimeout(() => {
+            // DIFERENCIACIÓN: PDF vs Excel
+            if (formato === 'pdf') {
+                // Para PDF (HTML): Abrir en nueva ventana como generateRegister
+                document.getElementById('exportStatusText').textContent = 'Abriendo vista para imprimir...';
+                
+                const html = await response.text();
+                const newWindow = window.open('', '_blank');
+                newWindow.document.write(html);
+                newWindow.document.close();
+                
+                // Reset UI y cerrar modal inmediatamente
                 document.getElementById('exportStatus').style.display = 'none';
                 document.getElementById('exportExcelBtn').disabled = false;
                 document.getElementById('exportPdfBtn').disabled = false;
-                showMessage(\`Archivo \${formato.toUpperCase()} descargado exitosamente\`, 'success');
+                showMessage('PDF abierto para imprimir', 'success');
                 closeExportModal();
-            }, 1500);
+                
+            } else {
+                // Para Excel: Descargar archivo como antes
+                document.getElementById('exportStatusText').textContent = 'Descargando archivo...';
+                
+                const blob = await response.blob();
+                
+                // Verificar que el blob tiene contenido
+                if (blob.size === 0) {
+                    throw new Error('El archivo generado está vacío');
+                }
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                }, 100);
+                
+                // Reset UI y cerrar modal después de la descarga
+                document.getElementById('exportStatusText').textContent = 'Descarga completada';
+                setTimeout(() => {
+                    document.getElementById('exportStatus').style.display = 'none';
+                    document.getElementById('exportExcelBtn').disabled = false;
+                    document.getElementById('exportPdfBtn').disabled = false;
+                    showMessage(\`Archivo \${formato.toUpperCase()} descargado exitosamente\`, 'success');
+                    closeExportModal();
+                }, 1500);
+            }
             
         } catch (error) {
             console.error('Error exportando:', error);
@@ -1880,6 +1960,12 @@ export function getWebAppScript() {
             document.getElementById('exportExcelBtn').disabled = false;
             document.getElementById('exportPdfBtn').disabled = false;
         }
+    }
+    
+    // Función auxiliar para mostrar mensajes
+    function showMessage(message, type = 'info') {
+        // Usar alert simple por ahora
+        alert(message);
     }
     
     // Event listeners para el modal de exportación
