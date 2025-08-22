@@ -215,6 +215,7 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
         pc.usuario_aprobador_cierre_nombre,
         pc.fecha_aprobacion_cierre,
         pc.estado_aprobacion_cierre,
+        pc.motivo_rechazo,
         GROUP_CONCAT(DISTINCT pp.personal_nombre || ' (' || pp.personal_empresa || ')') as personal_asignado,
         GROUP_CONCAT(DISTINCT pp.personal_id) as personal_ids
       FROM permisos_trabajo p
@@ -420,36 +421,67 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
       SET 
         estado = 'CERRADO_PENDIENTE_APROBACION',
         observaciones = ?
-      WHERE id = ? AND estado = 'ACTIVO'
+      WHERE id = ? AND estado IN ('ACTIVO', 'CIERRE_RECHAZADO')
     `).bind(
       cierreData.observacionesCierre || 'Trabajo completado',
       permisoId
     ).run();
     
-    // Insertar registro de cierre
-    await env.DB_PERMISOS.prepare(`
-      INSERT INTO permiso_cierre (
-        permiso_id, 
-        fecha_inicio_trabajos, 
-        fecha_fin_trabajos,
-        fecha_parada_turbina,
-        fecha_puesta_marcha_turbina,
-        observaciones_cierre,
-        usuario_cierre,
-        fecha_cierre,
-        estado_aprobacion_cierre
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      permisoId,
-      cierreData.fechaInicioTrabajos || null,
-      fechaFinTrabajos,
-      cierreData.fechaParadaTurbina || null,
-      cierreData.fechaPuestaMarcha || null,
-      cierreData.observacionesCierre || 'Trabajo completado',
-      usuarioCierre,
-      formatLocalDateTime(getLocalDateTime()),
-      'PENDIENTE'
-    ).run();
+    // Verificar si ya existe registro de cierre (para lógica UPSERT)
+    const existingCierre = await env.DB_PERMISOS.prepare(`
+      SELECT id FROM permiso_cierre WHERE permiso_id = ?
+    `).bind(permisoId).first();
+
+    if (existingCierre) {
+      // REINTENTO: Actualizar registro existente
+      await env.DB_PERMISOS.prepare(`
+        UPDATE permiso_cierre SET
+          fecha_inicio_trabajos = ?,
+          fecha_fin_trabajos = ?,
+          fecha_parada_turbina = ?,
+          fecha_puesta_marcha_turbina = ?,
+          observaciones_cierre = ?,
+          usuario_cierre = ?,
+          fecha_cierre = ?,
+          estado_aprobacion_cierre = 'PENDIENTE',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE permiso_id = ?
+      `).bind(
+        cierreData.fechaInicioTrabajos || null,
+        fechaFinTrabajos,
+        cierreData.fechaParadaTurbina || null,
+        cierreData.fechaPuestaMarcha || null,
+        cierreData.observacionesCierre || 'Trabajo completado',
+        usuarioCierre,
+        formatLocalDateTime(getLocalDateTime()),
+        permisoId
+      ).run();
+    } else {
+      // PRIMER INTENTO: Insertar nuevo registro de cierre
+      await env.DB_PERMISOS.prepare(`
+        INSERT INTO permiso_cierre (
+          permiso_id, 
+          fecha_inicio_trabajos, 
+          fecha_fin_trabajos,
+          fecha_parada_turbina,
+          fecha_puesta_marcha_turbina,
+          observaciones_cierre,
+          usuario_cierre,
+          fecha_cierre,
+          estado_aprobacion_cierre
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        permisoId,
+        cierreData.fechaInicioTrabajos || null,
+        fechaFinTrabajos,
+        cierreData.fechaParadaTurbina || null,
+        cierreData.fechaPuestaMarcha || null,
+        cierreData.observacionesCierre || 'Trabajo completado',
+        usuarioCierre,
+        formatLocalDateTime(getLocalDateTime()),
+        'PENDIENTE'
+      ).run();
+    }
     
     // Insertar materiales si los hay
     if (materiales && materiales.length > 0) {
@@ -711,10 +743,10 @@ export async function handleAprobarCierrePermiso(request, corsHeaders, env, curr
         permisoId
       ).run();
       
-      // Cambiar estado del permiso de vuelta a ACTIVO
+      // Cambiar estado del permiso a CIERRE_RECHAZADO
       await env.DB_PERMISOS.prepare(`
         UPDATE permisos_trabajo 
-        SET estado = 'ACTIVO'
+        SET estado = 'CIERRE_RECHAZADO'
         WHERE id = ?
       `).bind(permisoId).run();
       
@@ -744,7 +776,7 @@ export async function handleAprobarCierrePermiso(request, corsHeaders, env, curr
     
     return new Response(JSON.stringify({ 
       success: true,
-      message: accion === 'aprobar' ? 'Cierre aprobado exitosamente' : 'Cierre rechazado, permiso vuelto a estado activo'
+      message: accion === 'aprobar' ? 'Cierre aprobado exitosamente' : 'Cierre rechazado, permiso marcado como cierre rechazado'
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
