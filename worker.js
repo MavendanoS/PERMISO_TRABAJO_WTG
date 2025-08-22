@@ -796,6 +796,8 @@ async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleCerrarPermiso(request, corsHeaders, env, currentUser, services);
       case 'aprobar-permiso':
         return await handleAprobarPermiso(request, corsHeaders, env, currentUser, services);
+      case 'aprobar-cierre-permiso':
+        return await handleAprobarCierrePermiso(request, corsHeaders, env, currentUser, services);
       case 'generate-register':
         return await handleGenerateRegister(request, corsHeaders, env);
       case 'health':
@@ -1691,21 +1693,31 @@ async function handleCerrarPermiso(request, corsHeaders, env, currentUser, servi
       });
     }
     
-    // Actualizar estado del permiso
-    await env.DB_PERMISOS.prepare(`
+    // Actualizar estado del permiso a CERRADO_PENDIENTE_APROBACION
+    const updateResult = await env.DB_PERMISOS.prepare(`
       UPDATE permisos_trabajo 
       SET 
-        estado = 'CERRADO',
+        estado = 'CERRADO_PENDIENTE_APROBACION',
         observaciones = ?
-      WHERE id = ? AND estado = 'ACTIVO'
+      WHERE id = ? AND estado IN ('ACTIVO', 'CIERRE_RECHAZADO')
     `).bind(
       cierreData.observacionesCierre || 'Trabajo completado',
       permisoId
     ).run();
     
-    // Insertar registro de cierre
+    if (updateResult.changes === 0) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado o no se puede cerrar desde el estado actual' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // UPSERT para registro de cierre (soluciona el problema de reintentos)
     await env.DB_PERMISOS.prepare(`
-      INSERT INTO permiso_cierre (
+      INSERT OR REPLACE INTO permiso_cierre (
         permiso_id, 
         fecha_inicio_trabajos, 
         fecha_fin_trabajos,
@@ -1713,8 +1725,10 @@ async function handleCerrarPermiso(request, corsHeaders, env, currentUser, servi
         fecha_puesta_marcha_turbina,
         observaciones_cierre,
         usuario_cierre,
-        fecha_cierre
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        fecha_cierre,
+        estado_aprobacion_cierre,
+        version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', COALESCE((SELECT version + 1 FROM permiso_cierre WHERE permiso_id = ?), 1))
     `).bind(
       permisoId,
       cierreData.fechaInicioTrabajos || null,
@@ -1723,7 +1737,46 @@ async function handleCerrarPermiso(request, corsHeaders, env, currentUser, servi
       cierreData.fechaPuestaMarcha || null,
       cierreData.observacionesCierre || 'Trabajo completado',
       usuarioCierre,
-      getLocalDateTime()
+      getLocalDateTime(),
+      permisoId
+    ).run();
+    
+    // Obtener la versión actual para el historial
+    const versionResult = await env.DB_PERMISOS.prepare(`
+      SELECT version FROM permiso_cierre WHERE permiso_id = ?
+    `).bind(permisoId).first();
+    
+    const currentVersion = versionResult?.version || 1;
+    
+    // Registrar en historial de aprobaciones (AUDIT TRAIL)
+    await env.DB_PERMISOS.prepare(`
+      INSERT INTO historial_aprobaciones_cierre (
+        permiso_id,
+        version_intento,
+        accion,
+        estado_resultante,
+        usuario_id,
+        usuario_nombre,
+        comentarios,
+        fecha_accion,
+        observaciones_cierre,
+        fecha_inicio_trabajos,
+        fecha_fin_trabajos,
+        fecha_parada_turbina,
+        fecha_puesta_marcha_turbina
+      ) VALUES (?, ?, 'ENVIAR_CIERRE', 'CERRADO_PENDIENTE_APROBACION', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      permisoId,
+      currentVersion,
+      currentUser?.sub || usuarioCierre,
+      currentUser?.name || currentUser?.email || usuarioCierre,
+      `Cierre enviado para aprobación${currentVersion > 1 ? ' (Reintento #' + currentVersion + ')' : ''}`,
+      getLocalDateTime(),
+      cierreData.observacionesCierre || 'Trabajo completado',
+      cierreData.fechaInicioTrabajos || null,
+      fechaFinTrabajos,
+      cierreData.fechaParadaTurbina || null,
+      cierreData.fechaPuestaMarcha || null
     ).run();
     
     // Insertar materiales si los hay
@@ -1765,8 +1818,9 @@ async function handleCerrarPermiso(request, corsHeaders, env, currentUser, servi
     
     return new Response(JSON.stringify({ 
       success: true, 
-      message: 'Permiso cerrado exitosamente',
-      materialesCount: materiales.length
+      message: 'Permiso enviado para aprobación de cierre exitosamente',
+      materialesCount: materiales.length,
+      version: currentVersion
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
@@ -1789,6 +1843,191 @@ async function handleCerrarPermiso(request, corsHeaders, env, currentUser, servi
     return new Response(JSON.stringify({ 
       success: false, 
       error: `Error al cerrar el permiso: ${error.message}`
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+async function handleAprobarCierrePermiso(request, corsHeaders, env, currentUser, services) {
+  const { auditLogger } = services;
+  
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const rawData = await request.json();
+    const { permisoId, accion, comentarios } = InputSanitizer.sanitizeObject(rawData);
+    
+    // Validar datos requeridos
+    if (!permisoId || !accion || !['APROBAR', 'RECHAZAR'].includes(accion)) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Datos requeridos faltantes o acción inválida' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Validar permisos de usuario
+    if (!currentUser || !['Admin', 'Supervisor', 'Supervisor Enel'].includes(currentUser.rol)) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'No tiene permisos para aprobar cierres de permisos' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener el registro de cierre actual
+    const cierreActual = await env.DB_PERMISOS.prepare(`
+      SELECT pc.*, pt.numero_pt, pt.estado as estado_permiso
+      FROM permiso_cierre pc
+      INNER JOIN permisos_trabajo pt ON pc.permiso_id = pt.id
+      WHERE pc.permiso_id = ? AND pc.estado_aprobacion_cierre = 'PENDIENTE'
+    `).bind(permisoId).first();
+    
+    if (!cierreActual) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'No se encontró un cierre pendiente de aprobación para este permiso' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    const fechaAccion = getLocalDateTime();
+    const nuevoEstadoAprobacion = accion === 'APROBAR' ? 'APROBADO' : 'RECHAZADO';
+    const nuevoEstadoPermiso = accion === 'APROBAR' ? 'CERRADO' : 'CIERRE_RECHAZADO';
+    const nuevoEstadoResultante = accion === 'APROBAR' ? 'CERRADO' : 'CIERRE_RECHAZADO';
+    
+    // Actualizar el estado del cierre
+    await env.DB_PERMISOS.prepare(`
+      UPDATE permiso_cierre 
+      SET 
+        estado_aprobacion_cierre = ?,
+        usuario_aprobador_cierre_id = ?,
+        usuario_aprobador_cierre_nombre = ?,
+        fecha_aprobacion_cierre = ?,
+        observaciones_aprobacion = ?,
+        motivo_rechazo = CASE WHEN ? = 'RECHAZAR' THEN ? ELSE motivo_rechazo END,
+        fecha_rechazo = CASE WHEN ? = 'RECHAZAR' THEN ? ELSE fecha_rechazo END,
+        updated_at = ?
+      WHERE permiso_id = ?
+    `).bind(
+      nuevoEstadoAprobacion,
+      currentUser.sub || currentUser.email,
+      currentUser.name || currentUser.email,
+      fechaAccion,
+      comentarios || '',
+      accion,
+      comentarios || 'Sin motivo especificado',
+      accion,
+      fechaAccion,
+      fechaAccion,
+      permisoId
+    ).run();
+    
+    // Actualizar el estado del permiso principal
+    await env.DB_PERMISOS.prepare(`
+      UPDATE permisos_trabajo 
+      SET 
+        estado = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).bind(
+      nuevoEstadoPermiso,
+      fechaAccion,
+      permisoId
+    ).run();
+    
+    // Registrar en historial de aprobaciones (AUDIT TRAIL)
+    await env.DB_PERMISOS.prepare(`
+      INSERT INTO historial_aprobaciones_cierre (
+        permiso_id,
+        version_intento,
+        accion,
+        estado_resultante,
+        usuario_id,
+        usuario_nombre,
+        comentarios,
+        fecha_accion,
+        observaciones_cierre,
+        fecha_inicio_trabajos,
+        fecha_fin_trabajos,
+        fecha_parada_turbina,
+        fecha_puesta_marcha_turbina
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      permisoId,
+      cierreActual.version || 1,
+      accion,
+      nuevoEstadoResultante,
+      currentUser.sub || currentUser.email,
+      currentUser.name || currentUser.email,
+      comentarios || '',
+      fechaAccion,
+      cierreActual.observaciones_cierre,
+      cierreActual.fecha_inicio_trabajos,
+      cierreActual.fecha_fin_trabajos,
+      cierreActual.fecha_parada_turbina,
+      cierreActual.fecha_puesta_marcha_turbina
+    ).run();
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: accion === 'APROBAR' ? 'APPROVE_CLOSURE' : 'REJECT_CLOSURE',
+        resource: 'permiso_cierre',
+        resourceId: permisoId.toString(),
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: true,
+        metadata: { 
+          numeroPT: cierreActual.numero_pt,
+          version: cierreActual.version,
+          comentarios: comentarios || ''
+        }
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: accion === 'APROBAR' 
+        ? `Cierre aprobado exitosamente para permiso ${cierreActual.numero_pt}` 
+        : `Cierre rechazado para permiso ${cierreActual.numero_pt}`,
+      accion: accion,
+      nuevoEstado: nuevoEstadoPermiso
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error procesando aprobación de cierre:', error);
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'APPROVE_CLOSURE_FAILED',
+        resource: 'permiso_cierre',
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: false,
+        error: error.message
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: `Error al procesar la aprobación: ${error.message}` 
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -3084,6 +3323,27 @@ function getStyles() {
         background: rgba(149, 165, 166, 0.1);
         color: var(--text-secondary);
         border: 1px solid rgba(149, 165, 166, 0.2);
+    }
+    
+    .rechazado {
+        background: rgba(231, 76, 60, 0.1);
+        color: var(--danger-color);
+        border: 1px solid rgba(231, 76, 60, 0.2);
+        font-weight: 600;
+    }
+    
+    .aprobado {
+        background: rgba(39, 174, 96, 0.1);
+        color: var(--success-color);
+        border: 1px solid rgba(39, 174, 96, 0.2);
+        font-weight: 600;
+    }
+    
+    .pendiente {
+        background: rgba(241, 196, 15, 0.1);
+        color: var(--warning-color);
+        border: 1px solid rgba(241, 196, 15, 0.2);
+        font-weight: 600;
     }
     
     .permiso-info {

@@ -956,6 +956,8 @@ export function getWebAppScript() {
             estadoTexto = 'PENDIENTE DE APROBACIÓN';
         } else if (permiso.estado === 'CERRADO_PENDIENTE_APROBACION') {
             estadoTexto = 'CERRADO - PENDIENTE APROBACIÓN';
+        } else if (permiso.estado === 'CIERRE_RECHAZADO') {
+            estadoTexto = 'CIERRE RECHAZADO';
         }
         
         // Crear estructura de tarjeta con frente y reverso
@@ -1019,15 +1021,23 @@ export function getWebAppScript() {
                         \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
                             \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || \"N/A\"}')">CERRAR PERMISO</button>\` : ''}
                         
-                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
+                        \${permiso.estado === 'CIERRE_RECHAZADO' ? \`
+                            <button class="btn btn-warning btn-small" 
+                                    onclick="openReenviarCierreModal(\${permiso.id}, '\${(permiso.numero_pt || '').replace(/'/g, "\\\'")}', '\${(permiso.planta_nombre || '').replace(/'/g, "\\\'")}', '\${(permiso.aerogenerador_nombre || '').replace(/'/g, "\\\'")}')"
+                                    style="margin-right: 8px;">
+                                🔄 REENVIAR CIERRE
+                            </button>
+                        \` : ''}
+                        
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.estado === 'CIERRE_RECHAZADO' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
                             \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
                         
-                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? 
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.estado === 'CIERRE_RECHAZADO') ? 
                             \`<button class="btn btn-success btn-small" onclick="openExportModal(\${permiso.id}, '\${permiso.numero_pt}')"" style="margin-left: 8px;">
                                 📁 EXPORTAR
                             </button>\` : ''}
                         
-                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? 
+                        \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.estado === 'CIERRE_RECHAZADO') ? 
                             \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : 
                             (permiso.estado === 'CREADO' && !esEnel ? 
                                 \`<span style="color: var(--warning); font-size: 12px; font-weight: 500;">⏳ Pendiente de aprobación</span>\` : '')
@@ -1213,7 +1223,7 @@ export function getWebAppScript() {
                         
                         <!-- Tab: Cierre -->
                         <div class="tab-pane" data-tab="cierre" style="display: none;">
-                            \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? \`
+                            \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.estado === 'CIERRE_RECHAZADO') ? \`
                                 <div class="cierre-grid">
                                     <!-- Columna Izquierda: Responsable -->
                                     <div class="cierre-column">
@@ -1235,15 +1245,66 @@ export function getWebAppScript() {
                                         
                                         <!-- Estado de Aprobación del Cierre -->
                                         <div class="cierre-item aprobacion">
-                                            <div class="cierre-icon">\${permiso.estado_aprobacion_cierre === 'APROBADO' ? '✅' : '⏳'}</div>
+                                            <div class="cierre-icon">\${permiso.estado_aprobacion_cierre === 'APROBADO' ? '✅' : (permiso.estado_aprobacion_cierre === 'RECHAZADO' ? '❌' : '⏳')}</div>
                                             <div class="cierre-content">
                                                 <div class="cierre-label">Estado Aprobación</div>
-                                                <div class="cierre-value \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'aprobado' : 'pendiente'}">
-                                                    \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'APROBADO' : 'PENDIENTE'}
+                                                <div class="cierre-value \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'aprobado' : (permiso.estado_aprobacion_cierre === 'RECHAZADO' ? 'rechazado' : 'pendiente')}">
+                                                    \${permiso.estado_aprobacion_cierre === 'APROBADO' ? 'APROBADO' : (permiso.estado_aprobacion_cierre === 'RECHAZADO' ? 'RECHAZADO' : 'PENDIENTE')}
                                                 </div>
                                                 \${permiso.usuario_aprobador_cierre_nombre ? \`
                                                     <div class="cierre-sub-info">Por: \${permiso.usuario_aprobador_cierre_nombre}</div>
                                                     <div class="cierre-sub-info">\${formatDate(permiso.fecha_aprobacion_cierre)}</div>
+                                                \` : ''}
+                                                \${permiso.estado_aprobacion_cierre === 'RECHAZADO' && permiso.motivo_rechazo ? \`
+                                                    <div class="motivo-rechazo" style="
+                                                        margin-top: 12px;
+                                                        padding: 15px;
+                                                        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+                                                        border: 2px solid #e57373;
+                                                        border-radius: 8px;
+                                                        border-left: 5px solid #d32f2f;
+                                                        box-shadow: 0 3px 10px rgba(211, 47, 47, 0.15);
+                                                        animation: pulseRed 2s ease-in-out infinite alternate;
+                                                    ">
+                                                        <div style="
+                                                            color: #d32f2f;
+                                                            font-weight: 700;
+                                                            font-size: 14px;
+                                                            margin-bottom: 8px;
+                                                            display: flex;
+                                                            align-items: center;
+                                                            gap: 8px;
+                                                            text-transform: uppercase;
+                                                            letter-spacing: 0.5px;
+                                                        ">
+                                                            🚫 MOTIVO DEL RECHAZO
+                                                        </div>
+                                                        <div style="
+                                                            color: #424242;
+                                                            font-size: 14px;
+                                                            line-height: 1.5;
+                                                            font-weight: 600;
+                                                            background: rgba(255, 255, 255, 0.8);
+                                                            padding: 10px;
+                                                            border-radius: 4px;
+                                                            border-left: 3px solid #ff5722;
+                                                        ">
+                                                            "\${permiso.motivo_rechazo}"
+                                                        </div>
+                                                        <div style="
+                                                            margin-top: 12px;
+                                                            padding: 8px 12px;
+                                                            background: rgba(255, 152, 0, 0.1);
+                                                            border-radius: 4px;
+                                                            border: 1px solid #ff9800;
+                                                            color: #e65100;
+                                                            font-size: 12px;
+                                                            font-weight: 600;
+                                                            text-align: center;
+                                                        ">
+                                                            💡 Use el botón "REENVIAR CIERRE" para corregir y reenviar
+                                                        </div>
+                                                    </div>
                                                 \` : ''}
                                             </div>
                                         </div>
@@ -1594,7 +1655,120 @@ export function getWebAppScript() {
         document.getElementById('cerrarPermisoModal').style.display = 'flex';
     };
     
+    // Función auxiliar para escapar comillas en strings de JavaScript
+    function escapeJsString(str) {
+        return (str || '').replace(/'/g, '\\'');
+    }
+    
+    // Función para reenviar cierre rechazado
+    window.openReenviarCierreModal = async function(permisoId, numeroPT, planta, aerogenerador) {
+        try {
+            // Obtener detalles del permiso rechazado
+            const response = await ClientSecurity.makeSecureRequest(`/permiso-detalle?id=${permisoId}`);
+            if (!response.ok) {
+                throw new Error('Error al obtener detalles del permiso');
+            }
+            const permiso = await response.json();
+            
+            // Mostrar alerta informativa con el motivo de rechazo
+            if (permiso.motivo_rechazo) {
+                const confirmReenvio = confirm(
+                    `ATENCIÓN: Este permiso fue RECHAZADO\n\n` +
+                    `MOTIVO DEL RECHAZO:\n${permiso.motivo_rechazo}\n\n` +
+                    `¿Desea corregir los errores y reenviar el cierre?`
+                );
+                if (!confirmReenvio) return;
+            }
+            
+            // Pre-cargar el modal con datos anteriores
+            document.querySelector('#cerrarPermisoModal h3').textContent = `🔄 REENVIAR CIERRE - ${numeroPT}`;
+            document.getElementById('permisoInfoNumero').textContent = numeroPT;
+            document.getElementById('permisoInfoPlanta').textContent = planta;
+            document.getElementById('permisoInfoAerogenerador').textContent = aerogenerador;
+            
+            // Pre-poblar campos con datos existentes
+            document.getElementById('fechaInicioTrabajos').value = permiso.fecha_inicio_trabajos ? 
+                new Date(permiso.fecha_inicio_trabajos + 'T00:00:00').toISOString().split('T')[0] : '';
+            document.getElementById('fechaFinTrabajos').value = permiso.fecha_fin_trabajos ? 
+                new Date(permiso.fecha_fin_trabajos + 'T00:00:00').toISOString().split('T')[0] : '';
+            document.getElementById('fechaParadaTurbina').value = permiso.fecha_parada_turbina ? 
+                new Date(permiso.fecha_parada_turbina + 'T00:00:00').toISOString().split('T')[0] : '';
+            document.getElementById('fechaPuestaMarcha').value = permiso.fecha_puesta_marcha_turbina ? 
+                new Date(permiso.fecha_puesta_marcha_turbina + 'T00:00:00').toISOString().split('T')[0] : '';
+            
+            // Agregar contexto de reenvío a las observaciones
+            const observacionesActuales = permiso.observaciones_cierre || 'Trabajo completado según programación';
+            const contextoReenvio = `REENVÍO - Corrección aplicada tras rechazo:\n"${permiso.motivo_rechazo || 'Sin motivo específico'}"\n\n${observacionesActuales}`;
+            document.getElementById('observacionesCierre').value = contextoReenvio;
+            
+            // Pre-cargar materiales existentes
+            materialesParaCierre = [];
+            if (permiso.materiales_detalle && permiso.materiales_detalle.length > 0) {
+                permiso.materiales_detalle.forEach(mat => {
+                    materialesParaCierre.push({
+                        descripcion: mat.material_nombre || '',
+                        cantidad: mat.material_cantidad || 1,
+                        propietario: mat.material_propietario || 'ENEL',
+                        almacen: mat.material_almacen || 'PRINCIPAL',
+                        numeroItem: mat.numero_item || '',
+                        numeroSerie: mat.numero_serie || ''
+                    });
+                });
+            }
+            updateMaterialesList();
+            
+            // Agregar banner informativo
+            const modal = document.getElementById('cerrarPermisoModal');
+            let banner = modal.querySelector('.reenvio-banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.className = 'reenvio-banner';
+                banner.style.cssText = `
+                    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+                    border: 2px solid #ffc107;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 0 0 20px 0;
+                    color: #856404;
+                    font-weight: 600;
+                    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+                `;
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <span style="font-size: 20px;">🔄</span>
+                        <span style="font-size: 16px;">MODO REENVÍO - CIERRE RECHAZADO</span>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 500; line-height: 1.4;">
+                        ⚠️ Este permiso fue rechazado previamente. Revise y corrija los datos antes de reenviar.
+                    </div>
+                `;
+                const firstChild = modal.querySelector('.modal-content').firstElementChild;
+                firstChild.parentNode.insertBefore(banner, firstChild.nextSibling);
+            }
+            
+            document.getElementById('confirmarCierreBtn').dataset.permisoId = permisoId;
+            document.getElementById('cerrarPermisoModal').style.display = 'flex';
+            
+        } catch (error) {
+            console.error('Error al abrir modal de reenvío:', error);
+            alert('Error al cargar los datos del permiso. Intente nuevamente.');
+        }
+    };
+    
     function closeCerrarModal() {
+        // Limpiar banner de reenvío al cerrar
+        const modal = document.getElementById('cerrarPermisoModal');
+        const banner = modal.querySelector('.reenvio-banner');
+        if (banner) {
+            banner.remove();
+        }
+        
+        // Restaurar título original
+        document.querySelector('#cerrarPermisoModal h3').textContent = 'CERRAR PERMISO DE TRABAJO';
+        document.getElementById('permisoInfoNumero').textContent = '';
+        document.getElementById('permisoInfoPlanta').textContent = '';
+        document.getElementById('permisoInfoAerogenerador').textContent = '';
+        
         document.getElementById('cerrarPermisoModal').style.display = 'none';
     }
     

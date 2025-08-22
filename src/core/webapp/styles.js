@@ -642,6 +642,15 @@ export function getStyles() {
         to { transform: rotate(360deg); }
     }
     
+    @keyframes pulseRed {
+        0% { 
+            box-shadow: 0 3px 10px rgba(211, 47, 47, 0.15), 0 0 0 0 rgba(211, 47, 47, 0.4); 
+        }
+        100% { 
+            box-shadow: 0 3px 10px rgba(211, 47, 47, 0.25), 0 0 0 6px rgba(211, 47, 47, 0); 
+        }
+    }
+    
     /* Layout para tiempos - 2 columnas */
     .tiempos-grid {
         display: grid;
@@ -965,6 +974,13 @@ export function getStyles() {
         background: rgba(149, 165, 166, 0.1);
         color: var(--text-secondary);
         border: 1px solid rgba(149, 165, 166, 0.2);
+    }
+    
+    .estado-cierre_rechazado {
+        background: rgba(231, 76, 60, 0.1);
+        color: var(--danger-color);
+        border: 1px solid rgba(231, 76, 60, 0.2);
+        font-weight: 600;
     }
     
     .permiso-info {
