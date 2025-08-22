@@ -798,6 +798,8 @@ async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleAprobarPermiso(request, corsHeaders, env, currentUser, services);
       case 'aprobar-cierre-permiso':
         return await handleAprobarCierrePermiso(request, corsHeaders, env, currentUser, services);
+      case 'historial-cierre':
+        return await handleHistorialCierre(request, corsHeaders, env, currentUser, services);
       case 'generate-register':
         return await handleGenerateRegister(request, corsHeaders, env);
       case 'health':
@@ -2035,6 +2037,155 @@ async function handleAprobarCierrePermiso(request, corsHeaders, env, currentUser
   }
 }
 
+async function handleHistorialCierre(request, corsHeaders, env, currentUser, services) {
+  const { auditLogger } = services;
+  
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'Método no permitido' 
+    }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const permisoId = url.searchParams.get('permisoId');
+    
+    if (!permisoId) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'ID de permiso requerido' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Validar que el usuario tenga acceso al permiso
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT p.id, p.numero_pt, p.planta_nombre, p.estado
+      FROM permisos_trabajo p
+      WHERE p.id = ?
+    `).bind(permisoId).first();
+    
+    if (!permiso) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Validar permisos de acceso por planta
+    const esEnel = currentUser?.esEnel || currentUser?.rol === 'Supervisor Enel';
+    const parquesAutorizados = currentUser?.parques || [];
+    
+    if (!esEnel && !parquesAutorizados.includes(permiso.planta_nombre)) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'No tiene permisos para ver el historial de este permiso' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Obtener historial completo del cierre
+    const historial = await env.DB_PERMISOS.prepare(`
+      SELECT 
+        hac.id,
+        hac.version_intento,
+        hac.accion,
+        hac.estado_resultante,
+        hac.usuario_nombre,
+        hac.comentarios,
+        hac.fecha_accion,
+        hac.observaciones_cierre,
+        hac.fecha_inicio_trabajos,
+        hac.fecha_fin_trabajos,
+        hac.fecha_parada_turbina,
+        hac.fecha_puesta_marcha_turbina,
+        -- Indicar si es la versión más reciente
+        CASE WHEN hac.version_intento = (
+          SELECT MAX(version_intento) 
+          FROM historial_aprobaciones_cierre hac2 
+          WHERE hac2.permiso_id = hac.permiso_id
+        ) THEN 1 ELSE 0 END as es_version_actual
+      FROM historial_aprobaciones_cierre hac
+      WHERE hac.permiso_id = ?
+      ORDER BY hac.version_intento DESC, hac.fecha_accion DESC
+    `).bind(permisoId).all();
+    
+    // Obtener estado actual del cierre si existe
+    const cierreActual = await env.DB_PERMISOS.prepare(`
+      SELECT pc.*, pt.numero_pt, pt.estado as estado_permiso
+      FROM permiso_cierre pc
+      INNER JOIN permisos_trabajo pt ON pc.permiso_id = pt.id
+      WHERE pc.permiso_id = ?
+    `).bind(permisoId).first();
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'VIEW_CLOSURE_HISTORY',
+        resource: 'permiso_cierre',
+        resourceId: permisoId.toString(),
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: true,
+        metadata: { 
+          numeroPT: permiso.numero_pt,
+          historialEntradas: historial.results?.length || 0
+        }
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: true,
+      permiso: {
+        id: permiso.id,
+        numero_pt: permiso.numero_pt,
+        planta_nombre: permiso.planta_nombre,
+        estado: permiso.estado
+      },
+      cierreActual: cierreActual,
+      historial: historial.results || [],
+      totalIntentos: historial.results?.length || 0,
+      totalRechazos: historial.results?.filter(h => h.accion === 'RECHAZAR').length || 0
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo historial de cierre:', error);
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'VIEW_CLOSURE_HISTORY_FAILED',
+        resource: 'permiso_cierre',
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: false,
+        error: error.message
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: `Error al obtener historial: ${error.message}`
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
 async function handleGenerateRegister(request, corsHeaders, env) {
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -2833,6 +2984,69 @@ function getWebApp() {
             '</p>' +
     '</div>' +
   '</div>' +
+
+    '<!-- MODAL PARA APROBAR/RECHAZAR CIERRE -->' +
+    '<div id="aprobarCierreModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; overflow-y: auto;">' +
+        '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; margin: 20px;">' +
+            '<h3 id="aprobarCierreModalTitle" style="margin-bottom: 24px; color: var(--primary-color); font-size: 20px; font-weight: 600;"></h3>' +
+            
+            '<!-- Información del permiso -->' +
+            '<div style="background: var(--bg-secondary); padding: 16px; border-radius: 6px; margin-bottom: 24px; border: 1px solid var(--border-color);">' +
+                '<p style="margin-bottom: 8px;"><strong>Permiso:</strong> <span id="aprobarCierrePermisoNumero"></span></p>' +
+                '<p style="margin-bottom: 0;"><strong>Acción:</strong> <span id="aprobarCierreAccion"></span></p>' +
+            '</div>' +
+            
+            '<!-- Comentarios -->' +
+            '<div class="form-group" style="margin-bottom: 24px;">' +
+                '<label for="comentariosAprobacion">Comentarios de Aprobación/Rechazo</label>' +
+                '<textarea id="comentariosAprobacion" rows="3" placeholder="Ingrese sus comentarios sobre la decisión..."></textarea>' +
+            '</div>' +
+            
+            '<div style="display: flex; gap: 12px; justify-content: flex-end;">' +
+                '<button id="cancelarAprobacionBtn" class="btn btn-secondary btn-small">CANCELAR</button>' +
+                '<button id="confirmarAprobacionBtn" class="btn btn-small"></button>' +
+            '</div>' +
+        '</div>' +
+    '</div>' +
+
+    '<!-- MODAL PARA VER HISTORIAL DE CIERRE -->' +
+    '<div id="historialCierreModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; overflow-y: auto;">' +
+        '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto; margin: 20px;">' +
+            '<h3 style="margin-bottom: 24px; color: var(--primary-color); font-size: 20px; font-weight: 600;">HISTORIAL DE CIERRE</h3>' +
+            
+            '<!-- Información del permiso -->' +
+            '<div style="background: var(--bg-secondary); padding: 16px; border-radius: 6px; margin-bottom: 24px; border: 1px solid var(--border-color);">' +
+                '<p style="margin-bottom: 8px;"><strong>Permiso:</strong> <span id="historialPermisoNumero"></span></p>' +
+                '<p style="margin-bottom: 8px;"><strong>Planta:</strong> <span id="historialPermisoPlanta"></span></p>' +
+                '<p style="margin-bottom: 0;"><strong>Estado Actual:</strong> <span id="historialPermisoEstado"></span></p>' +
+            '</div>' +
+            
+            '<!-- Estadísticas del historial -->' +
+            '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">' +
+                '<div style="background: var(--success-color); background: rgba(34, 197, 94, 0.1); color: var(--success-color); padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(34, 197, 94, 0.2);">' +
+                    '<div style="font-size: 24px; font-weight: 600;" id="totalIntentos">0</div>' +
+                    '<div style="font-size: 12px; opacity: 0.8;">Total Intentos</div>' +
+                '</div>' +
+                '<div style="background: rgba(239, 68, 68, 0.1); color: var(--error-color); padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.2);">' +
+                    '<div style="font-size: 24px; font-weight: 600;" id="totalRechazos">0</div>' +
+                    '<div style="font-size: 12px; opacity: 0.8;">Total Rechazos</div>' +
+                '</div>' +
+            '</div>' +
+            
+            '<!-- Timeline del historial -->' +
+            '<div style="margin-bottom: 24px;">' +
+                '<h4 style="margin-bottom: 16px; color: var(--text-primary);">Timeline de Acciones</h4>' +
+                '<div id="historialTimeline" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 16px;">' +
+                    '<div class="loading">Cargando historial...</div>' +
+                '</div>' +
+            '</div>' +
+            
+            '<div style="display: flex; gap: 12px; justify-content: flex-end;">' +
+                '<button id="cerrarHistorialBtn" class="btn btn-secondary btn-small">CERRAR</button>' +
+            '</div>' +
+        '</div>' +
+    '</div>' +
+
   '<script>' + getWebAppScript() + '</script>' +
 '</body>' +
 '</html>';
@@ -3011,6 +3225,22 @@ function getStyles() {
         padding: 8px 16px;
         font-size: 12px;
         width: auto;
+    }
+    
+    .btn-success {
+        background: var(--success-color);
+    }
+    
+    .btn-success:hover:not(:disabled) {
+        background: #16a085;
+    }
+    
+    .btn-warning {
+        background: var(--warning-color);
+    }
+    
+    .btn-warning:hover:not(:disabled) {
+        background: #d68910;
     }
     
     .header {
@@ -3586,6 +3816,11 @@ function getWebAppScript() {
         on('cancelarCierreBtn', 'click', closeCerrarModal);
         on('confirmarCierreBtn', 'click', handleConfirmarCierre);
         on('addMaterialBtn', 'click', addMaterial);
+        
+        // Modales de aprobacion y historial
+        on('cancelarAprobacionBtn', 'click', closeAprobarCierreModal);
+        on('confirmarAprobacionBtn', 'click', handleConfirmarAprobacion);
+        on('cerrarHistorialBtn', 'click', closeHistorialCierreModal);
     }
     
     async function handleLogin(e) {
@@ -4301,8 +4536,31 @@ function getWebAppScript() {
                 \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
                     \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
                 
+                \${permiso.estado === 'CERRADO_PENDIENTE_APROBACION' && esEnel ? 
+                    \`<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt}', 'APROBAR')">APROBAR CIERRE</button>
+                        <button class="btn btn-danger btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt}', 'RECHAZAR')">RECHAZAR CIERRE</button>
+                        <button class="btn btn-secondary btn-small" onclick="openHistorialCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">VER HISTORIAL</button>
+                    </div>\` : ''}
+                
+                \${permiso.estado === 'CERRADO_PENDIENTE_APROBACION' && !esEnel ? 
+                    \`<div style="display: flex; gap: 8px; align-items: center;">
+                        <span style="color: var(--warning-color); font-size: 12px; font-weight: 500;">🕐 Pendiente de aprobación</span>
+                        <button class="btn btn-secondary btn-small" onclick="openHistorialCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">VER HISTORIAL</button>
+                    </div>\` : ''}
+                
+                \${permiso.estado === 'CIERRE_RECHAZADO' ? 
+                    \`<div style="display: flex; gap: 8px; align-items: center;">
+                        <span style="color: var(--error-color); font-size: 12px; font-weight: 500;">❌ Cierre rechazado</span>
+                        <button class="btn btn-secondary btn-small" onclick="openHistorialCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">VER HISTORIAL</button>
+                        \${puedeCerrarPermiso ? \`<button class="btn btn-warning btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">REENVIAR CIERRE</button>\` : ''}
+                    </div>\` : ''}
+                
                 \${permiso.estado === 'CERRADO' ? 
-                    \`<span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>\` : ''}
+                    \`<div style="display: flex; gap: 8px; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 12px;">Cerrado por: \${permiso.usuario_cierre || 'N/A'}</span>
+                        <button class="btn btn-secondary btn-small" onclick="openHistorialCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">VER HISTORIAL</button>
+                    </div>\` : ''}
             </div>
         \`;
         
@@ -4501,6 +4759,234 @@ function getWebAppScript() {
         } catch (error) {
             console.error('Error cerrando permiso:', error);
             alert('Error al cerrar el permiso');
+        }
+    }
+    
+    // ========================================================================
+    // APROBAR/RECHAZAR CIERRE Y VER HISTORIAL
+    // ========================================================================
+    
+    window.openAprobarCierreModal = function(permisoId, numeroPT, accion) {
+        document.getElementById('aprobarCierrePermisoNumero').textContent = numeroPT;
+        document.getElementById('aprobarCierreAccion').textContent = accion === 'APROBAR' ? 'Aprobar Cierre' : 'Rechazar Cierre';
+        
+        const modal = document.getElementById('aprobarCierreModal');
+        const title = document.getElementById('aprobarCierreModalTitle');
+        const confirmBtn = document.getElementById('confirmarAprobacionBtn');
+        const commentsTextarea = document.getElementById('comentariosAprobacion');
+        
+        if (accion === 'APROBAR') {
+            title.textContent = 'APROBAR CIERRE DE PERMISO';
+            confirmBtn.textContent = 'APROBAR CIERRE';
+            confirmBtn.className = 'btn btn-success btn-small';
+            commentsTextarea.placeholder = 'Comentarios sobre la aprobación (opcional)...';
+        } else {
+            title.textContent = 'RECHAZAR CIERRE DE PERMISO';
+            confirmBtn.textContent = 'RECHAZAR CIERRE';
+            confirmBtn.className = 'btn btn-danger btn-small';
+            commentsTextarea.placeholder = 'Motivo del rechazo (obligatorio)...';
+        }
+        
+        commentsTextarea.value = '';
+        confirmBtn.dataset.permisoId = permisoId;
+        confirmBtn.dataset.accion = accion;
+        
+        modal.style.display = 'flex';
+    };
+    
+    function closeAprobarCierreModal() {
+        document.getElementById('aprobarCierreModal').style.display = 'none';
+    }
+    
+    async function handleConfirmarAprobacion() {
+        const confirmBtn = document.getElementById('confirmarAprobacionBtn');
+        const permisoId = confirmBtn.dataset.permisoId;
+        const accion = confirmBtn.dataset.accion;
+        const comentarios = ClientSecurity.sanitizeInput(document.getElementById('comentariosAprobacion').value);
+        
+        if (accion === 'RECHAZAR' && !comentarios.trim()) {
+            alert('Debe especificar el motivo del rechazo');
+            return;
+        }
+        
+        if (!confirm(`¿Está seguro de ${accion.toLowerCase()} este cierre?`)) return;
+        
+        const originalText = confirmBtn.textContent;
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Procesando...';
+        
+        try {
+            const response = await ClientSecurity.makeSecureRequest('/aprobar-cierre-permiso', {
+                method: 'POST',
+                body: JSON.stringify({
+                    permisoId: parseInt(permisoId),
+                    accion: accion,
+                    comentarios: comentarios.trim()
+                })
+            });
+            
+            if (response.success) {
+                alert(`Cierre ${accion === 'APROBAR' ? 'aprobado' : 'rechazado'} exitosamente`);
+                closeAprobarCierreModal();
+                await loadPermisos();
+            } else {
+                alert('Error: ' + (response.error || 'Error desconocido'));
+            }
+        } catch (error) {
+            console.error('Error procesando aprobación:', error);
+            alert('Error de conexión');
+        } finally {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalText;
+        }
+    }
+    
+    window.openHistorialCierreModal = async function(permisoId, numeroPT) {
+        const modal = document.getElementById('historialCierreModal');
+        document.getElementById('historialPermisoNumero').textContent = numeroPT;
+        document.getElementById('historialTimeline').innerHTML = '<div class="loading">Cargando historial...</div>';
+        
+        modal.style.display = 'flex';
+        
+        try {
+            const response = await ClientSecurity.makeSecureRequest(`/historial-cierre?permisoId=${permisoId}`);
+            
+            if (response.success) {
+                const { permiso, historial, totalIntentos, totalRechazos } = response;
+                
+                document.getElementById('historialPermisoPlanta').textContent = permiso.planta_nombre;
+                document.getElementById('historialPermisoEstado').textContent = getEstadoDisplayText(permiso.estado);
+                document.getElementById('totalIntentos').textContent = totalIntentos;
+                document.getElementById('totalRechazos').textContent = totalRechazos;
+                
+                renderHistorialTimeline(historial);
+            } else {
+                document.getElementById('historialTimeline').innerHTML = `<div class="error">Error: ${response.error}</div>`;
+            }
+        } catch (error) {
+            console.error('Error cargando historial:', error);
+            document.getElementById('historialTimeline').innerHTML = '<div class="error">Error de conexión</div>';
+        }
+    };
+    
+    function closeHistorialCierreModal() {
+        document.getElementById('historialCierreModal').style.display = 'none';
+    }
+    
+    function renderHistorialTimeline(historial) {
+        const timeline = document.getElementById('historialTimeline');
+        
+        if (!historial || historial.length === 0) {
+            timeline.innerHTML = '<div class="text-center" style="color: var(--text-secondary);">No hay historial disponible</div>';
+            return;
+        }
+        
+        const timelineHTML = historial.map((entrada, index) => {
+            const isFirst = index === 0;
+            const accionColor = getAccionColor(entrada.accion);
+            const accionIcon = getAccionIcon(entrada.accion);
+            const fechaFormateada = formatFecha(entrada.fecha_accion);
+            
+            return `
+                <div style="position: relative; padding: 16px 0; ${!isFirst ? 'border-top: 1px solid var(--border-color);' : ''}">
+                    <!-- Icono de la línea de tiempo -->
+                    <div style="position: absolute; left: -8px; top: 20px; width: 24px; height: 24px; background: ${accionColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        ${accionIcon}
+                    </div>
+                    
+                    <div style="margin-left: 32px;">
+                        <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 8px;">
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-primary); font-size: 14px;">
+                                    ${getAccionDisplayText(entrada.accion)} 
+                                    <span style="background: ${accionColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px;">
+                                        v${entrada.version_intento}
+                                    </span>
+                                </div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-top: 2px;">
+                                    ${entrada.usuario_nombre} • ${fechaFormateada}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${entrada.comentarios ? `
+                            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid ${accionColor};">
+                                <strong>Comentarios:</strong><br>
+                                <span style="color: var(--text-secondary);">${entrada.comentarios}</span>
+                            </div>
+                        ` : ''}
+                        
+                        ${entrada.observaciones_cierre && entrada.accion === 'ENVIAR_CIERRE' ? `
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                                <strong>Detalles del cierre:</strong><br>
+                                • Observaciones: ${entrada.observaciones_cierre}<br>
+                                ${entrada.fecha_fin_trabajos ? `• Fecha fin trabajos: ${formatFecha(entrada.fecha_fin_trabajos)}` : ''}
+                                ${entrada.fecha_inicio_trabajos ? `<br>• Fecha inicio trabajos: ${formatFecha(entrada.fecha_inicio_trabajos)}` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        timeline.innerHTML = timelineHTML;
+    }
+    
+    function getEstadoDisplayText(estado) {
+        const estados = {
+            'CREADO': 'Creado',
+            'ACTIVO': 'Activo',
+            'CERRADO': 'Cerrado',
+            'CERRADO_PENDIENTE_APROBACION': 'Pendiente de Aprobación',
+            'CIERRE_RECHAZADO': 'Cierre Rechazado',
+            'CANCELADO': 'Cancelado'
+        };
+        return estados[estado] || estado;
+    }
+    
+    function getAccionColor(accion) {
+        const colores = {
+            'ENVIAR_CIERRE': '#3498db',
+            'APROBAR': '#27ae60',
+            'RECHAZAR': '#e74c3c',
+            'REENVIAR': '#f39c12'
+        };
+        return colores[accion] || '#95a5a6';
+    }
+    
+    function getAccionIcon(accion) {
+        const iconos = {
+            'ENVIAR_CIERRE': '📤',
+            'APROBAR': '✅',
+            'RECHAZAR': '❌',
+            'REENVIAR': '🔄'
+        };
+        return iconos[accion] || '📝';
+    }
+    
+    function getAccionDisplayText(accion) {
+        const textos = {
+            'ENVIAR_CIERRE': 'Cierre Enviado',
+            'APROBAR': 'Cierre Aprobado',
+            'RECHAZAR': 'Cierre Rechazado',
+            'REENVIAR': 'Cierre Reenviado'
+        };
+        return textos[accion] || accion;
+    }
+    
+    function formatFecha(fechaString) {
+        if (!fechaString) return 'N/A';
+        try {
+            const fecha = new Date(fechaString);
+            return fecha.toLocaleString('es-ES', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (error) {
+            return fechaString;
         }
     }
     
