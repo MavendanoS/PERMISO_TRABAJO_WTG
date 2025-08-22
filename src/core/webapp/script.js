@@ -1017,13 +1017,13 @@ export function getWebAppScript() {
                             \`<button class="btn btn-secondary btn-small" onclick="aprobarPermiso(\${permiso.id})">APROBAR</button>\` : ''}
                         
                         \${permiso.estado === 'ACTIVO' && puedeCerrarPermiso ? 
-                            \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || 'N/A'}')">CERRAR PERMISO</button>\` : ''}
+                            \`<button class="btn btn-danger btn-small" onclick="openCerrarModal(\${permiso.id}, '\${permiso.numero_pt}', '\${permiso.planta_nombre}', '\${permiso.aerogenerador_nombre || \"N/A\"}')">CERRAR PERMISO</button>\` : ''}
                         
                         \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION' || permiso.actividades_detalle?.length > 0 || permiso.materiales_detalle?.length > 0 || permiso.matriz_riesgos_detalle?.length > 0) ? 
                             \`<button class="btn btn-info btn-small" onclick="flipCard(\${permiso.id})">VER DETALLES</button>\` : ''}
                         
                         \${(permiso.estado === 'CERRADO' || permiso.estado === 'CERRADO_PENDIENTE_APROBACION') ? 
-                            \`<button class="btn btn-success btn-small" onclick="openExportModal(\${permiso.id}, '\${permiso.numero_pt}')" style="margin-left: 8px;">
+                            \`<button class="btn btn-success btn-small" onclick="openExportModal(\${permiso.id}, '\${permiso.numero_pt}')"" style="margin-left: 8px;">
                                 📁 EXPORTAR
                             </button>\` : ''}
                         
@@ -1261,7 +1261,7 @@ export function getWebAppScript() {
                                         <!-- Botón de Aprobación si es necesario -->
                                         \${permiso.estado === 'CERRADO_PENDIENTE_APROBACION' && (currentUser.rol === 'Admin' || currentUser.rol === 'Supervisor') ? \`
                                             <div class="cierre-actions" style="margin-top: 15px;">
-                                                <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt}')">
+                                                <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt.replace(/'/g, '')}')">
                                                     ✅ APROBAR CIERRE
                                                 </button>
                                             </div>
@@ -2114,8 +2114,23 @@ export function getWebAppScript() {
                     }
                 });
                 
-                // Actualizar la vista
-                renderPersonalSeleccionado();
+                // Actualizar la vista del personal seleccionado
+                const seleccionadoContainer = document.getElementById('personalSeleccionado');
+                if (seleccionadoContainer && personalSeleccionado.length > 0) {
+                    seleccionadoContainer.innerHTML = '';
+                    personalSeleccionado.forEach(persona => {
+                        const item = document.createElement('div');
+                        item.className = 'selector-item';
+                        item.innerHTML = '<strong>' + persona.nombre + '</strong><br><small>' + (persona.empresa || 'Sin empresa') + ' - ' + (persona.rol || 'Sin rol') + '</small>';
+                        item.dataset.id = persona.id;
+                        item.dataset.nombre = persona.nombre;
+                        item.dataset.empresa = persona.empresa || '';
+                        item.dataset.rol = persona.rol || '';
+                        item.dataset.rut = persona.rut || '';
+                        item.addEventListener('click', () => togglePersonalSelection(item));
+                        seleccionadoContainer.appendChild(item);
+                    });
+                }
             }
         }
     }

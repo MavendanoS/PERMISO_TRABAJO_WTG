@@ -211,6 +211,10 @@ export async function handlePermisos(request, corsHeaders, env, currentUser, ser
         pc.observaciones_cierre,
         pc.usuario_cierre,
         pc.fecha_cierre,
+        pc.usuario_aprobador_cierre_id,
+        pc.usuario_aprobador_cierre_nombre,
+        pc.fecha_aprobacion_cierre,
+        pc.estado_aprobacion_cierre,
         GROUP_CONCAT(DISTINCT pp.personal_nombre || ' (' || pp.personal_empresa || ')') as personal_asignado,
         GROUP_CONCAT(DISTINCT pp.personal_id) as personal_ids
       FROM permisos_trabajo p
@@ -313,10 +317,14 @@ export async function handleAprobarPermiso(request, corsHeaders, env, currentUse
       SET 
         estado = 'ACTIVO',
         usuario_aprobador = ?,
+        usuario_aprobador_apertura_id = ?,
+        usuario_aprobador_apertura_nombre = ?,
         fecha_aprobacion = ?
       WHERE id = ? AND estado = 'CREADO'
     `).bind(
       usuarioAprobador,
+      currentUser?.sub || 'unknown',
+      currentUser?.email || usuarioAprobador,
       formatLocalDateTime(getLocalDateTime()),
       permisoId
     ).run();
@@ -410,7 +418,7 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
     await env.DB_PERMISOS.prepare(`
       UPDATE permisos_trabajo 
       SET 
-        estado = 'CERRADO',
+        estado = 'CERRADO_PENDIENTE_APROBACION',
         observaciones = ?
       WHERE id = ? AND estado = 'ACTIVO'
     `).bind(
@@ -428,8 +436,9 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
         fecha_puesta_marcha_turbina,
         observaciones_cierre,
         usuario_cierre,
-        fecha_cierre
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        fecha_cierre,
+        estado_aprobacion_cierre
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       permisoId,
       cierreData.fechaInicioTrabajos || null,
@@ -438,7 +447,8 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
       cierreData.fechaPuestaMarcha || null,
       cierreData.observacionesCierre || 'Trabajo completado',
       usuarioCierre,
-      formatLocalDateTime(getLocalDateTime())
+      formatLocalDateTime(getLocalDateTime()),
+      'PENDIENTE'
     ).run();
     
     // Insertar materiales si los hay
@@ -504,6 +514,260 @@ export async function handleCerrarPermiso(request, corsHeaders, env, currentUser
     return new Response(JSON.stringify({ 
       success: false, 
       error: `Error al cerrar el permiso: ${error.message}`
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handleObtenerDetalleAprobacion(request, corsHeaders, env, currentUser, services) {
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  const { InputSanitizer } = services;
+  const url = new URL(request.url);
+  const permisoId = url.searchParams.get('id');
+
+  if (!permisoId) {
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'ID del permiso requerido' 
+    }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  try {
+    // Obtener datos completos del permiso para aprobación
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT 
+        p.*,
+        pc.fecha_inicio_trabajos,
+        pc.fecha_fin_trabajos,
+        pc.fecha_parada_turbina,
+        pc.fecha_puesta_marcha_turbina,
+        pc.observaciones_cierre,
+        pc.usuario_cierre,
+        pc.fecha_cierre,
+        pc.estado_aprobacion_cierre,
+        pc.motivo_rechazo,
+        GROUP_CONCAT(DISTINCT pp.personal_nombre || ' (' || pp.personal_empresa || ')') as personal_asignado,
+        GROUP_CONCAT(DISTINCT pa.actividad_nombre) as actividades_realizadas
+      FROM permisos_trabajo p
+      LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
+      LEFT JOIN permiso_personal pp ON p.id = pp.permiso_id
+      LEFT JOIN permiso_actividades pa ON p.id = pa.permiso_id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `).bind(permisoId).first();
+
+    if (!permiso) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Obtener materiales utilizados
+    const materiales = await env.DB_PERMISOS.prepare(`
+      SELECT * FROM permiso_materiales 
+      WHERE permiso_id = ?
+      ORDER BY fecha_registro DESC
+    `).bind(permisoId).all();
+
+    return new Response(JSON.stringify({ 
+      success: true,
+      permiso: permiso,
+      materiales: materiales.results || []
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo detalle para aprobación:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'Error al obtener detalles del permiso' 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+export async function handleAprobarCierrePermiso(request, corsHeaders, env, currentUser, services) {
+  const { InputSanitizer, auditLogger } = services;
+  
+  // Verificar que el usuario tenga permisos de aprobación
+  const userRole = currentUser?.rol || 'user';
+  if (!['Admin', 'Supervisor'].includes(userRole)) {
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'No tienes permisos para aprobar cierres' 
+    }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  try {
+    const rawData = await request.json();
+    const { permisoId, observaciones, accion } = InputSanitizer.sanitizeObject(rawData);
+    
+    if (!permisoId || !accion) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'ID del permiso y acción requeridos' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Verificar que el permiso existe y está cerrado pendiente de aprobación
+    const permiso = await env.DB_PERMISOS.prepare(`
+      SELECT p.id, p.estado, pc.id as cierre_id, pc.estado_aprobacion_cierre
+      FROM permisos_trabajo p
+      LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
+      WHERE p.id = ?
+    `).bind(permisoId).first();
+    
+    if (!permiso || !permiso.cierre_id) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Permiso no encontrado o no está cerrado' 
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    if (permiso.estado_aprobacion_cierre === 'APROBADO') {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'El cierre ya fue aprobado' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    if (accion === 'aprobar') {
+      // Aprobar el cierre
+      await env.DB_PERMISOS.prepare(`
+        UPDATE permiso_cierre 
+        SET 
+          usuario_aprobador_cierre_id = ?,
+          usuario_aprobador_cierre_nombre = ?,
+          fecha_aprobacion_cierre = ?,
+          estado_aprobacion_cierre = 'APROBADO',
+          observaciones_aprobacion = ?,
+          updated_at = ?
+        WHERE permiso_id = ?
+      `).bind(
+        currentUser?.sub || 'unknown',
+        currentUser?.email || currentUser?.name || 'Sistema',
+        formatLocalDateTime(getLocalDateTime()),
+        observaciones || null,
+        formatLocalDateTime(getLocalDateTime()),
+        permisoId
+      ).run();
+      
+      // Cambiar estado del permiso a CERRADO final
+      await env.DB_PERMISOS.prepare(`
+        UPDATE permisos_trabajo 
+        SET estado = 'CERRADO'
+        WHERE id = ?
+      `).bind(permisoId).run();
+      
+    } else if (accion === 'rechazar') {
+      // Rechazar el cierre
+      await env.DB_PERMISOS.prepare(`
+        UPDATE permiso_cierre 
+        SET 
+          usuario_aprobador_cierre_id = ?,
+          usuario_aprobador_cierre_nombre = ?,
+          fecha_rechazo = ?,
+          estado_aprobacion_cierre = 'RECHAZADO',
+          motivo_rechazo = ?,
+          updated_at = ?
+        WHERE permiso_id = ?
+      `).bind(
+        currentUser?.sub || 'unknown',
+        currentUser?.email || currentUser?.name || 'Sistema',
+        formatLocalDateTime(getLocalDateTime()),
+        observaciones || null,
+        formatLocalDateTime(getLocalDateTime()),
+        permisoId
+      ).run();
+      
+      // Cambiar estado del permiso de vuelta a ACTIVO
+      await env.DB_PERMISOS.prepare(`
+        UPDATE permisos_trabajo 
+        SET estado = 'ACTIVO'
+        WHERE id = ?
+      `).bind(permisoId).run();
+      
+    } else {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Acción no válida' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    
+    // Registrar en auditoría
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'APPROVE_CIERRE_PERMISO',
+        resource: 'permisos',
+        resourceId: permisoId.toString(),
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        details: { observaciones },
+        success: true
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: accion === 'aprobar' ? 'Cierre aprobado exitosamente' : 'Cierre rechazado, permiso vuelto a estado activo'
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error aprobando cierre:', error);
+    
+    if (auditLogger) {
+      await auditLogger.log({
+        action: 'APPROVE_CIERRE_PERMISO_FAILED',
+        resource: 'permisos',
+        userId: currentUser?.sub || 'anonymous',
+        userEmail: currentUser?.email || 'unknown',
+        ip: request.headers.get('CF-Connecting-IP'),
+        success: false,
+        error: error.message
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: `Error al aprobar cierre: ${error.message}`
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -905,7 +1169,11 @@ export async function handleExportarPermisoExcel(request, corsHeaders, env, curr
         pc.fecha_puesta_marcha_turbina,
         pc.observaciones_cierre,
         pc.usuario_cierre,
-        pc.fecha_cierre
+        pc.fecha_cierre,
+        pc.usuario_aprobador_cierre_id,
+        pc.usuario_aprobador_cierre_nombre,
+        pc.fecha_aprobacion_cierre,
+        pc.estado_aprobacion_cierre
       FROM permisos_trabajo p
       LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
       WHERE p.id = ?
@@ -965,15 +1233,31 @@ export async function handleExportarPermisoExcel(request, corsHeaders, env, curr
     csvContent += `"Observaciones de Cierre","${(permiso.observaciones_cierre || '').replace(/"/g, '""')}"\n`;
     csvContent += `"Usuario Cierre","${permiso.usuario_cierre || ''}"\n`;
     csvContent += `"Fecha Cierre","${permiso.fecha_cierre || ''}"\n`;
+    csvContent += `"Aprobador Apertura","${permiso.usuario_aprobador_apertura_nombre || permiso.usuario_aprobador || ''}"
+`;
+    csvContent += `"Fecha Aprobación Apertura","${permiso.fecha_aprobacion || ''}"
+`;
+    csvContent += `"Aprobador Cierre","${permiso.usuario_aprobador_cierre_nombre || ''}"
+`;
+    csvContent += `"Fecha Aprobación Cierre","${permiso.fecha_aprobacion_cierre || ''}"
+`;
+    csvContent += `"Estado Aprobación Cierre","${permiso.estado_aprobacion_cierre || 'PENDIENTE'}"
+`;
     csvContent += '\n';
     
-    // Sección: Tiempos
+    // Sección: Tiempos (con horarios formato Chile)
     csvContent += '=== TIEMPOS ===\n';
-    csvContent += 'Evento,Fecha/Hora\n';
+    csvContent += 'Evento,Fecha/Hora (Hora Chile)\n';
+    csvContent += `"Creación Permiso","${permiso.fecha_creacion || ''}"
+`;
+    csvContent += `"Aprobación Apertura","${permiso.fecha_aprobacion || ''}"
+`;
     csvContent += `"Inicio Trabajos","${permiso.fecha_inicio_trabajos || ''}"\n`;
     csvContent += `"Fin Trabajos","${permiso.fecha_fin_trabajos || ''}"\n`;
     csvContent += `"Parada Turbina","${permiso.fecha_parada_turbina || ''}"\n`;
     csvContent += `"Puesta en Marcha","${permiso.fecha_puesta_marcha_turbina || ''}"\n`;
+    csvContent += `"Cierre Permiso","${permiso.fecha_cierre || ''}"\n`;
+    csvContent += `"Aprobación Cierre","${permiso.fecha_aprobacion_cierre || ''}"\n`;
     csvContent += '\n';
     
     // Sección: Personal Asignado
@@ -1065,7 +1349,11 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env, curren
         pc.fecha_puesta_marcha_turbina,
         pc.observaciones_cierre,
         pc.usuario_cierre,
-        pc.fecha_cierre
+        pc.fecha_cierre,
+        pc.usuario_aprobador_cierre_id,
+        pc.usuario_aprobador_cierre_nombre,
+        pc.fecha_aprobacion_cierre,
+        pc.estado_aprobacion_cierre
       FROM permisos_trabajo p
       LEFT JOIN permiso_cierre pc ON p.id = pc.permiso_id
       WHERE p.id = ?
@@ -1310,9 +1598,12 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env, curren
             </div>
             <div>
                 <div class="info-item"><span class="info-label">Jefe de Faena:</span><span class="info-value">${permiso.jefe_faena_nombre || ''}</span></div>
-                <div class="info-item"><span class="info-label">Supervisor:</span><span class="info-value">${permiso.supervisor_parque_nombre || 'N/A'}</span></div>
+                <div class="info-item"><span class="info-label">Supervisor Responsable:</span><span class="info-value">${permiso.supervisor_parque_nombre || 'N/A'}</span></div>
                 <div class="info-item"><span class="info-label">Tipo:</span><span class="info-value">${permiso.tipo_mantenimiento || ''}</span></div>
                 <div class="info-item"><span class="info-label">Fecha Creación:</span><span class="info-value">${permiso.fecha_creacion || ''}</span></div>
+                <div class="info-item"><span class="info-label">Aprobador Apertura:</span><span class="info-value">${permiso.usuario_aprobador_apertura_nombre || permiso.usuario_aprobador || 'No aprobado'}</span></div>
+                <div class="info-item"><span class="info-label">Aprobador Cierre:</span><span class="info-value">${permiso.usuario_aprobador_cierre_nombre || 'No aprobado'}</span></div>
+                <div class="info-item"><span class="info-label">Estado Aprobación Cierre:</span><span class="info-value">${permiso.estado_aprobacion_cierre || 'PENDIENTE'}</span></div>
             </div>
         </div>
         <div class="info-item" style="margin-top: 15px;">
@@ -1324,13 +1615,17 @@ export async function handleExportarPermisoPdf(request, corsHeaders, env, curren
     </div>
     
     <div class="section">
-        <div class="section-title">TIEMPOS DE TRABAJO</div>
+        <div class="section-title">TIEMPOS DE TRABAJO (Hora Chile)</div>
         <table class="table">
             <tr><th>Evento</th><th>Fecha y Hora</th></tr>
+            <tr><td>Creación Permiso</td><td>${permiso.fecha_creacion || 'No registrado'}</td></tr>
+            <tr><td>Aprobación Apertura</td><td>${permiso.fecha_aprobacion || 'No aprobado'}</td></tr>
             <tr><td>Inicio de Trabajos</td><td>${permiso.fecha_inicio_trabajos || 'No registrado'}</td></tr>
             <tr><td>Fin de Trabajos</td><td>${permiso.fecha_fin_trabajos || 'No registrado'}</td></tr>
             <tr><td>Parada Turbina</td><td>${permiso.fecha_parada_turbina || 'No aplica'}</td></tr>
             <tr><td>Puesta en Marcha</td><td>${permiso.fecha_puesta_marcha_turbina || 'No aplica'}</td></tr>
+            <tr><td>Cierre Permiso</td><td>${permiso.fecha_cierre || 'No cerrado'}</td></tr>
+            <tr><td>Aprobación Cierre</td><td>${permiso.fecha_aprobacion_cierre || 'No aprobado'}</td></tr>
         </table>
     </div>
     
@@ -1432,6 +1727,7 @@ export default {
   handlePermisos,
   handleAprobarPermiso,
   handleCerrarPermiso,
+  handleAprobarCierrePermiso,
   handleGenerateRegister,
   handleHealth,
   handleExportarPermisoExcel,

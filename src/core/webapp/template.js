@@ -188,7 +188,8 @@ export function getWebApp() {
                         '<option value=\"\">Todos los estados</option>' +
                         '<option value=\"CREADO\">Creados</option>' +
                         '<option value=\"ACTIVO\">Activos</option>' +
-                        '<option value=\"CERRADO\">Cerrados</option>' +
+                        '<option value=\"CERRADO_PENDIENTE_APROBACION\">Cerrados - Pendiente Aprobación</option>' +
+                        '<option value=\"CERRADO\">Cerrados - Aprobados</option>' +
                     '</select>' +
                     '<input type=\"date\" id=\"fechaDesde\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha desde - Filtra permisos creados desde esta fecha\" placeholder=\"Fecha desde permiso\">' +
                     '<input type=\"date\" id=\"fechaHasta\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha hasta - Filtra permisos creados hasta esta fecha\" placeholder=\"Fecha hasta permiso\">' +
@@ -369,7 +370,7 @@ export function getWebApp() {
                 '<button id="exportPdfBtn" class="btn btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; font-size: 16px;">' +
                     '<span style="font-size: 24px;">📄</span>' +
                     '<div style="text-align: left;">' +
-                        '<div style="font-weight: 600;">PDF (HTML)</div>' +
+                        '<div style="font-weight: 600;">PDF para Imprimir</div>' +
                     '</div>' +
                 '</button>' +
             '</div>' +

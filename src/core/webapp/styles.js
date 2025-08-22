@@ -893,6 +893,34 @@ export function getStyles() {
         overflow-y: auto;
     }
     
+    /* Estilos para aprobación de cierre */
+    .cierre-item.aprobacion {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border: 1px solid #dee2e6;
+    }
+    
+    .cierre-value.aprobado {
+        color: var(--success-color);
+        font-weight: 600;
+    }
+    
+    .cierre-value.pendiente {
+        color: var(--warning-color);
+        font-weight: 600;
+    }
+    
+    .cierre-sub-info {
+        font-size: 10px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+    
+    .cierre-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+    
     .permiso-header {
         display: flex;
         justify-content: space-between;
@@ -924,6 +952,13 @@ export function getStyles() {
         background: rgba(39, 174, 96, 0.1);
         color: var(--success-color);
         border: 1px solid rgba(39, 174, 96, 0.2);
+    }
+    
+    .estado-cerrado_pendiente_aprobacion {
+        background: rgba(230, 126, 34, 0.1);
+        color: #e67e22;
+        border: 1px solid rgba(230, 126, 34, 0.3);
+        font-weight: 500;
     }
     
     .estado-cerrado {
