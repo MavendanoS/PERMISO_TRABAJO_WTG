@@ -11,6 +11,7 @@ import { getSecurityHeaders, getCorsHeaders } from './core/utils/headers.js';
 import RateLimiter from './core/services/rateLimiter.js';
 import AuthService from './core/services/authService.js';
 import AuditLogger from './core/services/auditLogger.js';
+import InputSanitizer from './core/utils/sanitizers.js';
 
 //import initializeDatabase from './core/db/init.js';
 import handleApiRequest from './core/routes/api.js';
@@ -38,6 +39,7 @@ export default {
       rateLimiter,
       authService,
       auditLogger,
+      InputSanitizer,
       // alias (por si algún handler espera 'auth'/'audit')
       auth: authService,
       audit: auditLogger,
