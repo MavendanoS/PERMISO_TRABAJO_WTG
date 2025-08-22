@@ -1551,7 +1551,7 @@ export function getWebAppScript() {
     
     // Función para abrir modal básico de aprobación de cierre
     window.openAprobarCierreModal = async function(permisoId, numeroPT) {
-        const decision = confirm('¿Desea APROBAR el cierre de este permiso?\n\nPermiso: ' + numeroPT + '\n\nOK = Aprobar\nCancelar = Rechazar');
+        const decision = confirm(`¿Desea APROBAR el cierre de este permiso?\n\nPermiso: ${numeroPT}\n\nOK = Aprobar\nCancelar = Rechazar`);
         const accion = decision ? 'aprobar' : 'rechazar';
         const observaciones = prompt('Observaciones del supervisor (opcional):') || '';
         
