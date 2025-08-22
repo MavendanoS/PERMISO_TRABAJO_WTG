@@ -1261,7 +1261,7 @@ export function getWebAppScript() {
                                         <!-- Botón de Aprobación si es necesario -->
                                         \${permiso.estado === 'CERRADO_PENDIENTE_APROBACION' && (currentUser.rol === 'Admin' || currentUser.rol === 'Supervisor') ? \`
                                             <div class="cierre-actions" style="margin-top: 15px;">
-                                                <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${permiso.numero_pt.replace(/'/g, '')}')">
+                                                <button class="btn btn-success btn-small" onclick="openAprobarCierreModal(\${permiso.id}, '\${(permiso.numero_pt || '').replace(/'/g, "\\'")}')" >
                                                     ✅ APROBAR CIERRE
                                                 </button>
                                             </div>
