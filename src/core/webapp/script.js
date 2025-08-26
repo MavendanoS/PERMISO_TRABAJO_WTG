@@ -117,7 +117,7 @@ export function getWebAppScript() {
       if (!hasSpecialChar) {
         return { 
           valid: false, 
-          message: 'La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{};\':"|,.<>/?)' 
+          message: 'La contraseña debe contener al menos un carácter especial' 
         };
       }
       
