@@ -83,7 +83,7 @@ export function getWebAppScript() {
       const minLength = 8;
       const hasUppercase = /[A-Z]/.test(password);
       const hasLowercase = /[a-z]/.test(password);
-      const hasNumbers = /\d/.test(password);
+      const hasNumbers = /[0-9]/.test(password);
       const hasSpecialChar = /[^a-zA-Z0-9]/.test(password);
       
       if (!password || password.length < minLength) {
