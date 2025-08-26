@@ -288,6 +288,8 @@ export function getWebAppScript() {
                 } else {
                     await loadAppData();
                     showApp();
+                    // Iniciar timer de inactividad después del login exitoso
+                    resetInactivityTimer();
                 }
             } else {
                 showLoginError(result.message || 'Error al iniciar sesión');
@@ -409,11 +411,36 @@ export function getWebAppScript() {
         }
     }
     
+    // Auto-logout por inactividad (30 minutos)
+    let inactivityTimer = null;
+    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos en milisegundos
+    
+    function resetInactivityTimer() {
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+        }
+        
+        // Solo configurar timer si hay usuario logueado
+        if (authToken) {
+            inactivityTimer = setTimeout(() => {
+                alert('Sesión expirada por inactividad. Debe iniciar sesión nuevamente.');
+                handleLogout();
+            }, INACTIVITY_TIMEOUT);
+        }
+    }
+    
     function handleLogout() {
         authToken = null;
         sessionId = null;
         currentUser = null;
         sessionStorage.clear();
+        
+        // Limpiar timer de inactividad
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+        }
+        
         showLoginScreen();
     }
     
@@ -2413,6 +2440,24 @@ export function getWebAppScript() {
                 }
             }
         }
+    }
+    
+    // ========================================================================
+    // DETECCIÓN DE ACTIVIDAD PARA AUTO-LOGOUT
+    // ========================================================================
+    
+    // Eventos que indican actividad del usuario
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    function setupActivityListeners() {
+        activityEvents.forEach(event => {
+            document.addEventListener(event, resetInactivityTimer, true);
+        });
+    }
+    
+    // Configurar listeners cuando se cargue la aplicación
+    if (typeof window !== 'undefined') {
+        setupActivityListeners();
     }
     
     // Sistema de seguridad activo - D1 Database Edition

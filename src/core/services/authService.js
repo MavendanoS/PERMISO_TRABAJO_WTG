@@ -142,7 +142,7 @@ export default class AuthService {
       ...payload,
       sub: payload.id || payload.sub,  // Usar 'id' como 'sub' si no existe
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // Expira en 24 horas
+      exp: Math.floor(Date.now() / 1000) + (30 * 60) // Expira en 30 minutos por inactividad
     };
     
     const headerB64 = b64url(btoa(String.fromCharCode(...enc.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))));
