@@ -8,7 +8,7 @@ export function getWebApp() {
     '<meta charset=\"UTF-8\">' +
     '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +
     '<title>PT Wind - Sistema de Gestión de Permisos</title>' +
-    '<link rel=\"manifest\" href=\"data:application/json;base64,eyJuYW1lIjoiUFQgV2luZCAtIFBlcm1pc29zIGRlIFRyYWJham8iLCJzaG9ydF9uYW1lIjoiUFQgV2luZCIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMWExZjJlIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjNhV1IwYUQwaU1USTRJaUJvWldsbmFIUTlJakV5T0NJZ2RtbGxkMEp2ZUQwaU1DQXdJREV5T0NBeU9EZ2lJSGh0Ykc1elBTSm9kSFJ3T2k4dmQzZDNMbmN6TG05eVp5OHlNREF3TDNOMlp5SStQSEpsWTNRZ2VEMGlOQ0lnZVQwaU5DSWdkMmxrZEdnOUlqRXlNQ0lnYUdWcFoyaDBQU0l4TWpBaUlHWnBiR3c5SWlNeFlURm1NbVVpTHo0OEwzTjJaejQ9IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJzaXplcyI6IjEyOHgxMjgifV19\">' +
+    '<link rel=\"manifest\" href=\"data:application/json;base64,eyJuYW1lIjoiUFQgV2luZCAtIFBlcm1pc29zIGRlIFRyYWJham8iLCJzaG9ydF9uYW1lIjoiUFQgV2luZCIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMWExZjJlIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjNhV1IwYUQwaU1USTRJaUJvWldsbmFIUTlJakV5T0NJZ2RtbGxkMEp2ZUQwaU1DQXdJREV5T0NBeE1qZ2lJSGh0Ykc1elBTSm9kSFJ3T2k4dmQzZDNMbmN6TG05eVp5OHlNREF3TDNOMlp5SStQSEpsWTNRZ2VEMGlOQ0lnZVQwaU5DSWdkMmxrZEdnOUlqRXlNQ0lnYUdWcFoyaDBQU0l4TWpBaUlHWnBiR3c5SWlNeFlURm1NbVVpTHo0OEwzTjJaejQ9IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJzaXplcyI6IjEyOHgxMjgifV19\">' +
     '<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">' +
     '<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>' +
     '<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">' +
@@ -190,6 +190,7 @@ export function getWebApp() {
                         '<option value=\"ACTIVO\">Activos</option>' +
                         '<option value=\"CERRADO_PENDIENTE_APROBACION\">Cerrados - Pendiente Aprobación</option>' +
                         '<option value=\"CERRADO\">Cerrados - Aprobados</option>' +
+                        '<option value=\"CIERRE_RECHAZADO\">Cierre Rechazado</option>' +
                     '</select>' +
                     '<input type=\"date\" id=\"fechaDesde\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha desde - Filtra permisos creados desde esta fecha\" placeholder=\"Fecha desde permiso\">' +
                     '<input type=\"date\" id=\"fechaHasta\" class=\"search-input\" style=\"max-width: 150px;\" title=\"Fecha hasta - Filtra permisos creados hasta esta fecha\" placeholder=\"Fecha hasta permiso\">' +
@@ -391,9 +392,12 @@ export function getWebApp() {
         '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 480px; width: 90%; margin: 20px;">' +
             '<h3 style="margin-bottom: 24px; color: var(--primary-color);">Cambio de Contraseña Obligatorio</h3>' +
             
-            '<div class="warning" style="background: rgba(243, 156, 18, 0.1); color: var(--warning-color); padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(243, 156, 18, 0.2);">' +
-                '<strong>⚠️ Primera vez ingresando</strong><br>' +
-                'Por seguridad, debes cambiar tu contraseña temporal.' +
+            '<div id="passwordChangeReason" class="warning" style="background: rgba(243, 156, 18, 0.1); color: var(--warning-color); padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(243, 156, 18, 0.2);">' +
+                'Por seguridad, debes cambiar tu contraseña.' +
+            '</div>' +
+            
+            '<div id="passwordRequirements" class="info" style="background: rgba(26, 31, 46, 0.05); padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(26, 31, 46, 0.1); display: none;">' +
+                '<!-- Los requisitos se insertan dinámicamente -->' +
             '</div>' +
             
             '<div class="form-group">' +
