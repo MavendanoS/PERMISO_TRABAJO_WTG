@@ -9,7 +9,7 @@ function validatePasswordStrength(password) {
   const hasUppercase = /[A-Z]/.test(password);
   const hasLowercase = /[a-z]/.test(password);
   const hasNumbers = /\d/.test(password);
-  const hasSpecialChar = /[!@#$%^&*()_+=[\]{};':\"|,.<>/?\\-]/.test(password);
+  const hasSpecialChar = /[^a-zA-Z0-9]/.test(password);
   
   if (!password || password.length < minLength) {
     return { 
