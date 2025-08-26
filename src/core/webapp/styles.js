@@ -1380,6 +1380,109 @@ export function getStyles() {
         }
     }
     
+    /* Estilos para administración de usuarios */
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+    }
+    
+    .badge-primary {
+        background: var(--primary-color);
+        color: white;
+    }
+    
+    .badge-secondary {
+        background: var(--text-secondary);
+        color: white;
+    }
+    
+    .badge-success {
+        background: var(--success-color);
+        color: white;
+    }
+    
+    .badge-warning {
+        background: var(--warning-color);
+        color: white;
+    }
+    
+    .badge-danger {
+        background: var(--danger-color);
+        color: white;
+    }
+    
+    .badge-info {
+        background: var(--accent-color);
+        color: white;
+    }
+    
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .btn-small {
+        padding: 4px 8px;
+        font-size: 12px;
+        border-radius: 4px;
+        min-width: auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+    }
+    
+    .btn-danger {
+        background: var(--danger-color);
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background: #c0392b;
+        transform: translateY(-1px);
+    }
+    
+    .grid-two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 40px 20px;
+        color: var(--text-secondary);
+        font-style: italic;
+    }
+    
+    .error {
+        background: #fef5e7;
+        color: var(--danger-color);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #f5c6cb;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+    
+    .success {
+        background: #d4edda;
+        color: var(--success-color);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #c3e6cb;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+
     @media print {
         body {
             background: white;

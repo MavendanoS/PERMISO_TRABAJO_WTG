@@ -250,6 +250,14 @@ export function getWebAppScript() {
         on('cancelarCierreBtn', 'click', closeCerrarModal);
         on('confirmarCierreBtn', 'click', handleConfirmarCierre);
         on('addMaterialBtn', 'click', addMaterial);
+        
+        // Administración de usuarios
+        on('btnNuevoUsuario', 'click', openNuevoUsuarioModal);
+        on('btnRefreshUsuarios', 'click', loadUsuarios);
+        on('usuarioForm', 'submit', handleGuardarUsuario);
+        on('cancelarUsuarioBtn', 'click', closeUsuarioModal);
+        on('cancelarEliminarUsuarioBtn', 'click', closeConfirmarEliminarModal);
+        on('confirmarEliminarUsuarioBtn', 'click', handleEliminarUsuario);
     }
     
     async function handleLogin(e) {
@@ -459,6 +467,7 @@ export function getWebAppScript() {
             
             if (currentUser.rol === 'ADMIN') {
                 document.getElementById('tabDatos').style.display = 'block';
+                document.getElementById('tabAdminUsuarios').style.display = 'block';
             }
         }
     }
@@ -2062,6 +2071,8 @@ export function getWebAppScript() {
         
         if (tabName === 'datos' && currentUser?.rol === 'ADMIN') {
             loadDatosTab();
+        } else if (tabName === 'admin-usuarios' && currentUser?.rol === 'ADMIN') {
+            loadUsuarios();
         }
     }
     
@@ -2130,9 +2141,6 @@ export function getWebAppScript() {
     // ========================================================================
     // AUTO-LOGOUT POR INACTIVIDAD
     // ========================================================================
-    
-    let inactivityTimer;
-    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos
     
     function resetInactivityTimer() {
         clearTimeout(inactivityTimer);
@@ -2459,6 +2467,276 @@ export function getWebAppScript() {
     if (typeof window !== 'undefined') {
         setupActivityListeners();
     }
+    
+    // ========================================================================
+    // ADMINISTRACIÓN DE USUARIOS
+    // ========================================================================
+    
+    let usuarioEditando = null;
+    
+    async function loadUsuarios() {
+        const container = document.getElementById('usuariosContainer');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading">Cargando usuarios...</div>';
+            
+            const response = await ClientSecurity.makeSecureRequest('/admin-users');
+            
+            if (!response.success) {
+                container.innerHTML = `<div class="error">Error al cargar usuarios: ${response.error || 'Error desconocido'}</div>`;
+                return;
+            }
+            
+            const usuarios = response.users || [];
+            
+            if (usuarios.length === 0) {
+                container.innerHTML = '<div class="no-data">No hay usuarios registrados</div>';
+                return;
+            }
+            
+            // Crear tabla de usuarios
+            let html = `
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Empresa</th>
+                                <th>Parques Autorizados</th>
+                                <th>Estado</th>
+                                <th>Password Temporal</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            usuarios.forEach(usuario => {
+                html += `
+                    <tr>
+                        <td>${ClientSecurity.encodeHTML(usuario.usuario || '')}</td>
+                        <td>${ClientSecurity.encodeHTML(usuario.email || '')}</td>
+                        <td><span class="badge badge-${getRoleBadgeClass(usuario.rol)}">${ClientSecurity.encodeHTML(usuario.rol || '')}</span></td>
+                        <td>${ClientSecurity.encodeHTML(usuario.empresa || '')}</td>
+                        <td>${ClientSecurity.encodeHTML(usuario.parques_autorizados || '')}</td>
+                        <td><span class="badge badge-${usuario.estado === 'Activo' ? 'success' : 'danger'}">${ClientSecurity.encodeHTML(usuario.estado || '')}</span></td>
+                        <td><span class="badge badge-${usuario.password_temporal ? 'warning' : 'success'}">${usuario.password_temporal ? 'Sí' : 'No'}</span></td>
+                        <td>
+                            <button class="btn btn-small btn-secondary" onclick="editarUsuario(${usuario.id})" title="Editar">
+                                ✏️
+                            </button>
+                            <button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(${usuario.id}, '${ClientSecurity.encodeHTML(usuario.usuario)}')" title="Eliminar" style="margin-left: 4px;">
+                                🗑️
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error cargando usuarios:', error);
+            container.innerHTML = '<div class="error">Error de conexión al cargar usuarios</div>';
+        }
+    }
+    
+    function getRoleBadgeClass(rol) {
+        switch(rol?.toLowerCase()) {
+            case 'admin': return 'primary';
+            case 'supervisor': return 'warning';
+            case 'operador': return 'info';
+            default: return 'secondary';
+        }
+    }
+    
+    function openNuevoUsuarioModal() {
+        usuarioEditando = null;
+        document.getElementById('usuarioModalTitle').textContent = 'Nuevo Usuario';
+        document.getElementById('usuarioForm').reset();
+        document.getElementById('modalPassword').placeholder = 'Contraseña requerida';
+        document.getElementById('modalPassword').required = true;
+        document.getElementById('usuarioError').style.display = 'none';
+        document.getElementById('usuarioModal').style.display = 'flex';
+    }
+    
+    async function editarUsuario(userId) {
+        try {
+            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${userId}`);
+            
+            if (!response.success) {
+                alert('Error al cargar datos del usuario: ' + (response.error || 'Error desconocido'));
+                return;
+            }
+            
+            const usuario = response.user;
+            usuarioEditando = userId;
+            
+            document.getElementById('usuarioModalTitle').textContent = 'Editar Usuario';
+            document.getElementById('modalUsuario').value = usuario.usuario || '';
+            document.getElementById('modalEmail').value = usuario.email || '';
+            document.getElementById('modalPassword').value = '';
+            document.getElementById('modalPassword').placeholder = 'Dejar vacío para mantener actual';
+            document.getElementById('modalPassword').required = false;
+            document.getElementById('modalRol').value = usuario.rol || '';
+            document.getElementById('modalEmpresa').value = usuario.empresa || '';
+            document.getElementById('modalParquesAutorizados').value = usuario.parques_autorizados || '';
+            document.getElementById('modalEstado').value = usuario.estado || 'Activo';
+            document.getElementById('modalPasswordTemporal').checked = usuario.password_temporal || false;
+            document.getElementById('usuarioError').style.display = 'none';
+            document.getElementById('usuarioModal').style.display = 'flex';
+            
+        } catch (error) {
+            console.error('Error cargando usuario:', error);
+            alert('Error de conexión al cargar usuario');
+        }
+    }
+    
+    async function handleGuardarUsuario(e) {
+        e.preventDefault();
+        
+        const errorDiv = document.getElementById('usuarioError');
+        const submitBtn = document.getElementById('guardarUsuarioBtn');
+        
+        errorDiv.style.display = 'none';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando...';
+        
+        try {
+            const formData = {
+                usuario: ClientSecurity.sanitizeInput(document.getElementById('modalUsuario').value),
+                email: ClientSecurity.sanitizeInput(document.getElementById('modalEmail').value),
+                rol: document.getElementById('modalRol').value,
+                empresa: ClientSecurity.sanitizeInput(document.getElementById('modalEmpresa').value) || null,
+                parques_autorizados: ClientSecurity.sanitizeInput(document.getElementById('modalParquesAutorizados').value) || null,
+                estado: document.getElementById('modalEstado').value,
+                password_temporal: document.getElementById('modalPasswordTemporal').checked
+            };
+            
+            const password = document.getElementById('modalPassword').value;
+            if (password) {
+                formData.password = password;
+            }
+            
+            // Validaciones
+            if (!formData.usuario || !formData.email || !formData.rol) {
+                errorDiv.textContent = 'Los campos Usuario, Email y Rol son requeridos';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (!usuarioEditando && !password) {
+                errorDiv.textContent = 'La contraseña es requerida para nuevos usuarios';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            const url = usuarioEditando ? `/admin-users/${usuarioEditando}` : '/admin-users';
+            const method = usuarioEditando ? 'PUT' : 'POST';
+            
+            const response = await ClientSecurity.makeSecureRequest(url, {
+                method,
+                body: JSON.stringify(formData)
+            });
+            
+            if (!response.success) {
+                errorDiv.textContent = response.error || 'Error desconocido';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            closeUsuarioModal();
+            await loadUsuarios();
+            showSuccessMessage(usuarioEditando ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente');
+            
+        } catch (error) {
+            console.error('Error guardando usuario:', error);
+            errorDiv.textContent = 'Error de conexión';
+            errorDiv.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Guardar Usuario';
+        }
+    }
+    
+    function closeUsuarioModal() {
+        document.getElementById('usuarioModal').style.display = 'none';
+        usuarioEditando = null;
+    }
+    
+    let usuarioIdEliminar = null;
+    
+    function confirmarEliminarUsuario(userId, userName) {
+        usuarioIdEliminar = userId;
+        document.getElementById('usuarioEliminarInfo').textContent = `Usuario: ${userName}`;
+        document.getElementById('confirmarEliminarUsuarioModal').style.display = 'flex';
+    }
+    
+    async function handleEliminarUsuario() {
+        if (!usuarioIdEliminar) return;
+        
+        const confirmarBtn = document.getElementById('confirmarEliminarUsuarioBtn');
+        confirmarBtn.disabled = true;
+        confirmarBtn.textContent = 'Eliminando...';
+        
+        try {
+            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${usuarioIdEliminar}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.success) {
+                alert('Error al eliminar usuario: ' + (response.error || 'Error desconocido'));
+                return;
+            }
+            
+            closeConfirmarEliminarModal();
+            await loadUsuarios();
+            showSuccessMessage('Usuario eliminado correctamente');
+            
+        } catch (error) {
+            console.error('Error eliminando usuario:', error);
+            alert('Error de conexión al eliminar usuario');
+        } finally {
+            confirmarBtn.disabled = false;
+            confirmarBtn.textContent = 'Eliminar Usuario';
+        }
+    }
+    
+    function closeConfirmarEliminarModal() {
+        document.getElementById('confirmarEliminarUsuarioModal').style.display = 'none';
+        usuarioIdEliminar = null;
+    }
+    
+    function showSuccessMessage(message) {
+        // Crear y mostrar mensaje de éxito temporal
+        const successDiv = document.createElement('div');
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--success-color);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            font-weight: 500;
+        `;
+        successDiv.textContent = message;
+        document.body.appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+    }
+    
+    // Hacer funciones globales para usar en onclick
+    window.editarUsuario = editarUsuario;
+    window.confirmarEliminarUsuario = confirmarEliminarUsuario;
     
     // Sistema de seguridad activo - D1 Database Edition
   `;

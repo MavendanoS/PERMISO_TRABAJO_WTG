@@ -63,6 +63,7 @@ export function getWebApp() {
                 '<button class=\"tab\" data-tab=\"consultar\">Consultar Permisos</button>' +
                 '<button class=\"tab\" data-tab=\"matriz\">Matriz de Riesgos</button>' +
                 '<button class=\"tab\" data-tab=\"datos\" id=\"tabDatos\" style=\"display: none;\">Datos del Sistema</button>' +
+                '<button class=\"tab\" data-tab=\"admin-usuarios\" id=\"tabAdminUsuarios\" style=\"display: none;\">Administración de Usuarios</button>' +
             '</div>' +
             
             '<!-- Tab: Nuevo Permiso -->' +
@@ -251,6 +252,22 @@ export function getWebApp() {
                     '</div>' +
                 '</div>' +
             '</div>' +
+            
+            '<!-- Tab: Administración de Usuarios -->' +
+            '<div id="tab-admin-usuarios" class="tab-content">' +
+                '<div class="card">' +
+                    '<h3>Administración de Usuarios</h3>' +
+                    
+                    '<!-- Botones de acción -->' +
+                    '<div style="margin-bottom: 24px;">' +
+                        '<button id="btnNuevoUsuario" class="btn btn-primary">Nuevo Usuario</button>' +
+                        '<button id="btnRefreshUsuarios" class="btn btn-secondary" style="margin-left: 12px;">Actualizar Lista</button>' +
+                    '</div>' +
+                    
+                    '<!-- Lista de usuarios -->' +
+                    '<div id="usuariosContainer" class="loading">Cargando usuarios...</div>' +
+                '</div>' +
+            '</div>' +
         '</div>' +
     '</div>' +
 
@@ -419,6 +436,89 @@ export function getWebApp() {
             '</p>' +
     '</div>' +
   '</div>' +
+  
+  '<!-- MODAL PARA NUEVO/EDITAR USUARIO -->' +
+  '<div id="usuarioModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; overflow-y: auto;">' +
+      '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; margin: 20px;">' +
+          '<h3 id="usuarioModalTitle" style="margin-bottom: 24px; color: var(--primary-color); font-size: 20px; font-weight: 600;">Nuevo Usuario</h3>' +
+          
+          '<form id="usuarioForm">' +
+              '<div class="grid-two" style="gap: 16px; margin-bottom: 16px;">' +
+                  '<div class="form-group">' +
+                      '<label for="modalUsuario">Usuario *</label>' +
+                      '<input type="text" id="modalUsuario" required placeholder="Nombre de usuario">' +
+                  '</div>' +
+                  '<div class="form-group">' +
+                      '<label for="modalEmail">Email *</label>' +
+                      '<input type="email" id="modalEmail" required placeholder="email@empresa.com">' +
+                  '</div>' +
+              '</div>' +
+              
+              '<div class="grid-two" style="gap: 16px; margin-bottom: 16px;">' +
+                  '<div class="form-group">' +
+                      '<label for="modalPassword">Contraseña</label>' +
+                      '<input type="password" id="modalPassword" placeholder="Dejar vacío para mantener actual">' +
+                  '</div>' +
+                  '<div class="form-group">' +
+                      '<label for="modalRol">Rol *</label>' +
+                      '<select id="modalRol" required>' +
+                          '<option value="">Seleccionar rol...</option>' +
+                          '<option value="operador">Operador</option>' +
+                          '<option value="supervisor">Supervisor</option>' +
+                          '<option value="admin">Admin</option>' +
+                      '</select>' +
+                  '</div>' +
+              '</div>' +
+              
+              '<div class="form-group" style="margin-bottom: 16px;">' +
+                  '<label for="modalEmpresa">Empresa</label>' +
+                  '<input type="text" id="modalEmpresa" placeholder="Nombre de la empresa">' +
+              '</div>' +
+              
+              '<div class="form-group" style="margin-bottom: 16px;">' +
+                  '<label for="modalParquesAutorizados">Parques Autorizados</label>' +
+                  '<input type="text" id="modalParquesAutorizados" placeholder="Parques separados por comas">' +
+              '</div>' +
+              
+              '<div class="grid-two" style="gap: 16px; margin-bottom: 24px;">' +
+                  '<div class="form-group">' +
+                      '<label for="modalEstado">Estado *</label>' +
+                      '<select id="modalEstado" required>' +
+                          '<option value="Activo">Activo</option>' +
+                          '<option value="Inactivo">Inactivo</option>' +
+                      '</select>' +
+                  '</div>' +
+                  '<div class="form-group">' +
+                      '<label style="display: flex; align-items: center; gap: 8px;">' +
+                          '<input type="checkbox" id="modalPasswordTemporal">' +
+                          '<span>Contraseña temporal (debe cambiarse)</span>' +
+                      '</label>' +
+                  '</div>' +
+              '</div>' +
+              
+              '<div id="usuarioError" class="error" style="display: none; margin-bottom: 16px;"></div>' +
+              
+              '<div style="display: flex; gap: 12px; justify-content: flex-end;">' +
+                  '<button type="button" id="cancelarUsuarioBtn" class="btn btn-secondary">Cancelar</button>' +
+                  '<button type="submit" id="guardarUsuarioBtn" class="btn btn-primary">Guardar Usuario</button>' +
+              '</div>' +
+          '</form>' +
+      '</div>' +
+  '</div>' +
+  
+  '<!-- MODAL DE CONFIRMACIÓN PARA ELIMINAR USUARIO -->' +
+  '<div id="confirmarEliminarUsuarioModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">' +
+      '<div style="background: white; border-radius: 8px; padding: 32px; max-width: 400px; width: 90%; margin: 20px; text-align: center;">' +
+          '<h3 style="margin-bottom: 16px; color: var(--danger-color); font-size: 20px; font-weight: 600;">Confirmar Eliminación</h3>' +
+          '<p style="margin-bottom: 24px; color: var(--text-secondary);">¿Estás seguro de que deseas eliminar este usuario?</p>' +
+          '<p id="usuarioEliminarInfo" style="margin-bottom: 24px; font-weight: 500; color: var(--text-primary);"></p>' +
+          '<div style="display: flex; gap: 12px; justify-content: center;">' +
+              '<button id="cancelarEliminarUsuarioBtn" class="btn btn-secondary">Cancelar</button>' +
+              '<button id="confirmarEliminarUsuarioBtn" class="btn btn-danger">Eliminar Usuario</button>' +
+          '</div>' +
+      '</div>' +
+  '</div>' +
+  
   '<script>' + getWebAppScript() + '</script>' +
 '</body>' +
 '</html>';
