@@ -75,8 +75,54 @@ export function getWebAppScript() {
     }
     
     // ========================================================================
-    // FUNCIONES DE SEGURIDAD (sin cambios)
+    // FUNCIONES DE SEGURIDAD
     // ========================================================================
+    
+    // Función para validar la fortaleza de contraseñas
+    function validatePasswordStrength(password) {
+      const minLength = 8;
+      const hasUppercase = /[A-Z]/.test(password);
+      const hasLowercase = /[a-z]/.test(password);
+      const hasNumbers = /\d/.test(password);
+      const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"|,.<>/?\\]/.test(password);
+      
+      if (!password || password.length < minLength) {
+        return { 
+          valid: false, 
+          message: 'La contraseña debe tener al menos 8 caracteres' 
+        };
+      }
+      
+      if (!hasUppercase) {
+        return { 
+          valid: false, 
+          message: 'La contraseña debe contener al menos una letra mayúscula' 
+        };
+      }
+      
+      if (!hasLowercase) {
+        return { 
+          valid: false, 
+          message: 'La contraseña debe contener al menos una letra minúscula' 
+        };
+      }
+      
+      if (!hasNumbers) {
+        return { 
+          valid: false, 
+          message: 'La contraseña debe contener al menos un número' 
+        };
+      }
+      
+      if (!hasSpecialChar) {
+        return { 
+          valid: false, 
+          message: 'La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{};\':"|,.<>/?)' 
+        };
+      }
+      
+      return { valid: true };
+    }
     
     class ClientSecurity {
       static sanitizeInput(input) {
@@ -238,7 +284,7 @@ export function getWebAppScript() {
                     sessionStorage.setItem('sessionId', sessionId);
                 }
                 if (result.requirePasswordChange) {
-                    showChangePasswordModal();
+                    showChangePasswordModal(result.changeReason);
                 } else {
                     await loadAppData();
                     showApp();
@@ -255,8 +301,31 @@ export function getWebAppScript() {
     }
 
     // Nueva función para mostrar modal de cambio obligatorio
-    function showChangePasswordModal() {
-        document.getElementById('changePasswordModal').style.display = 'flex';
+    function showChangePasswordModal(reason) {
+        const modal = document.getElementById('changePasswordModal');
+        modal.style.display = 'flex';
+        
+        // Mostrar el motivo del cambio requerido
+        const reasonDiv = document.getElementById('passwordChangeReason');
+        if (reasonDiv) {
+            reasonDiv.textContent = reason || 'Por razones de seguridad, debe cambiar su contraseña.';
+            reasonDiv.style.display = 'block';
+        }
+        
+        // Mostrar requisitos de contraseña
+        const requirementsDiv = document.getElementById('passwordRequirements');
+        if (requirementsDiv) {
+            requirementsDiv.innerHTML = '<strong>La nueva contraseña debe cumplir con:</strong>' +
+                '<ul style="text-align: left; margin: 10px 0;">' +
+                    '<li>Mínimo 8 caracteres</li>' +
+                    '<li>Al menos una letra mayúscula</li>' +
+                    '<li>Al menos una letra minúscula</li>' +
+                    '<li>Al menos un número</li>' +
+                    '<li>Al menos un carácter especial (!@#$%^&*()_+-=[]{};\\':\\"|,.<>/?)</li>' +
+                '</ul>';
+            requirementsDiv.style.display = 'block';
+        }
+        
         document.getElementById('submitPasswordChangeBtn')
             .addEventListener('click', handleMandatoryPasswordChange, { once: true });
     }
@@ -280,8 +349,10 @@ export function getWebAppScript() {
         return;
     }
     
-    if (newPassword.length < 8) {
-        errorDiv.textContent = 'La contraseña debe tener al menos 8 caracteres';
+    // Validación completa de contraseña segura
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
+        errorDiv.textContent = passwordValidation.message;
         errorDiv.style.display = 'block';
         return;
     }
@@ -1664,42 +1735,60 @@ export function getWebAppScript() {
     window.openReenviarCierreModal = async function(permisoId, numeroPT, planta, aerogenerador) {
         try {
             // Obtener detalles del permiso rechazado
-            const response = await ClientSecurity.makeSecureRequest(`/permiso-detalle?id=${permisoId}`);
-            if (!response.ok) {
-                throw new Error('Error al obtener detalles del permiso');
+            const response = await ClientSecurity.makeSecureRequest('/permiso-detalle?id=' + permisoId);
+            if (!response.success) {
+                throw new Error('Error al obtener detalles del permiso: ' + (response.error || 'Error desconocido'));
             }
-            const permiso = await response.json();
+            const permiso = response.permiso;
             
             // Mostrar alerta informativa con el motivo de rechazo
             if (permiso.motivo_rechazo) {
                 const confirmReenvio = confirm(
-                    `ATENCIÓN: Este permiso fue RECHAZADO\n\n` +
-                    `MOTIVO DEL RECHAZO:\n${permiso.motivo_rechazo}\n\n` +
-                    `¿Desea corregir los errores y reenviar el cierre?`
+                    'ATENCION: Este permiso fue RECHAZADO\\n\\n' +
+                    'MOTIVO DEL RECHAZO:\\n' + permiso.motivo_rechazo + '\\n\\n' +
+                    'Desea corregir los errores y reenviar el cierre?'
                 );
                 if (!confirmReenvio) return;
             }
             
             // Pre-cargar el modal con datos anteriores
-            document.querySelector('#cerrarPermisoModal h3').textContent = `🔄 REENVIAR CIERRE - ${numeroPT}`;
+            document.querySelector('#cerrarPermisoModal h3').textContent = '🔄 REENVIAR CIERRE - ' + numeroPT;
             document.getElementById('permisoInfoNumero').textContent = numeroPT;
             document.getElementById('permisoInfoPlanta').textContent = planta;
             document.getElementById('permisoInfoAerogenerador').textContent = aerogenerador;
             
-            // Pre-poblar campos con datos existentes
-            document.getElementById('fechaInicioTrabajos').value = permiso.fecha_inicio_trabajos ? 
-                new Date(permiso.fecha_inicio_trabajos + 'T00:00:00').toISOString().split('T')[0] : '';
-            document.getElementById('fechaFinTrabajos').value = permiso.fecha_fin_trabajos ? 
-                new Date(permiso.fecha_fin_trabajos + 'T00:00:00').toISOString().split('T')[0] : '';
-            document.getElementById('fechaParadaTurbina').value = permiso.fecha_parada_turbina ? 
-                new Date(permiso.fecha_parada_turbina + 'T00:00:00').toISOString().split('T')[0] : '';
-            document.getElementById('fechaPuestaMarcha').value = permiso.fecha_puesta_marcha_turbina ? 
-                new Date(permiso.fecha_puesta_marcha_turbina + 'T00:00:00').toISOString().split('T')[0] : '';
+            // Función auxiliar para convertir fecha de forma segura
+            const safeDateToISOString = (dateString) => {
+                if (!dateString || dateString === null) return '';
+                try {
+                    const date = new Date(dateString + 'T00:00:00');
+                    if (isNaN(date.getTime())) return '';
+                    return date.toISOString().split('T')[0];
+                } catch (e) {
+                    return '';
+                }
+            };
+            
+            // Pre-poblar campos con datos existentes (verificando que existan)
+            const fechaInicioEl = document.getElementById('fechaInicioTrabajos');
+            if (fechaInicioEl) fechaInicioEl.value = safeDateToISOString(permiso.fecha_inicio_trabajos);
+            
+            const fechaFinEl = document.getElementById('fechaFinTrabajos');
+            if (fechaFinEl) fechaFinEl.value = safeDateToISOString(permiso.fecha_fin_trabajos);
+            
+            const fechaParadaEl = document.getElementById('fechaParadaTurbina');
+            if (fechaParadaEl) fechaParadaEl.value = safeDateToISOString(permiso.fecha_parada_turbina);
+            
+            const fechaPuestaEl = document.getElementById('fechaPuestaMarcha');
+            if (fechaPuestaEl) fechaPuestaEl.value = safeDateToISOString(permiso.fecha_puesta_marcha_turbina);
             
             // Agregar contexto de reenvío a las observaciones
-            const observacionesActuales = permiso.observaciones_cierre || 'Trabajo completado según programación';
-            const contextoReenvio = `REENVÍO - Corrección aplicada tras rechazo:\n"${permiso.motivo_rechazo || 'Sin motivo específico'}"\n\n${observacionesActuales}`;
-            document.getElementById('observacionesCierre').value = contextoReenvio;
+            const observacionesEl = document.getElementById('observacionesCierre');
+            if (observacionesEl) {
+                const observacionesActuales = permiso.observaciones_cierre || 'Trabajo completado según programación';
+                const contextoReenvio = 'REENVIO - Correccion aplicada tras rechazo:\\n"' + (permiso.motivo_rechazo || 'Sin motivo especifico') + '"\\n\\n' + observacionesActuales;
+                observacionesEl.value = contextoReenvio;
+            }
             
             // Pre-cargar materiales existentes
             materialesParaCierre = [];
@@ -1719,35 +1808,44 @@ export function getWebAppScript() {
             
             // Agregar banner informativo
             const modal = document.getElementById('cerrarPermisoModal');
+            if (!modal) {
+                throw new Error('Modal de cierre no encontrado');
+            }
             let banner = modal.querySelector('.reenvio-banner');
             if (!banner) {
                 banner = document.createElement('div');
                 banner.className = 'reenvio-banner';
-                banner.style.cssText = `
-                    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-                    border: 2px solid #ffc107;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 0 0 20px 0;
-                    color: #856404;
-                    font-weight: 600;
-                    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
-                `;
-                banner.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                        <span style="font-size: 20px;">🔄</span>
-                        <span style="font-size: 16px;">MODO REENVÍO - CIERRE RECHAZADO</span>
-                    </div>
-                    <div style="font-size: 13px; font-weight: 500; line-height: 1.4;">
-                        ⚠️ Este permiso fue rechazado previamente. Revise y corrija los datos antes de reenviar.
-                    </div>
-                `;
-                const firstChild = modal.querySelector('.modal-content').firstElementChild;
-                firstChild.parentNode.insertBefore(banner, firstChild.nextSibling);
+                banner.style.cssText = 
+                    'background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); ' +
+                    'border: 2px solid #ffc107; ' +
+                    'border-radius: 8px; ' +
+                    'padding: 15px; ' +
+                    'margin: 0 0 20px 0; ' +
+                    'color: #856404; ' +
+                    'font-weight: 600; ' +
+                    'box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);';
+                banner.innerHTML = 
+                    '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">' +
+                        '<span style="font-size: 20px;">🔄</span>' +
+                        '<span style="font-size: 16px;">MODO REENVÍO - CIERRE RECHAZADO</span>' +
+                    '</div>' +
+                    '<div style="font-size: 13px; font-weight: 500; line-height: 1.4;">' +
+                        '⚠️ Este permiso fue rechazado previamente. Revise y corrija los datos antes de reenviar.' +
+                    '</div>';
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent && modalContent.firstElementChild) {
+                    const firstChild = modalContent.firstElementChild;
+                    firstChild.parentNode.insertBefore(banner, firstChild.nextSibling);
+                } else {
+                    // Si no encuentra .modal-content, insertarlo al inicio del modal
+                    modal.insertBefore(banner, modal.firstChild);
+                }
             }
             
-            document.getElementById('confirmarCierreBtn').dataset.permisoId = permisoId;
-            document.getElementById('cerrarPermisoModal').style.display = 'flex';
+            const confirmarBtn = document.getElementById('confirmarCierreBtn');
+            if (confirmarBtn) confirmarBtn.dataset.permisoId = permisoId;
+            
+            if (modal) modal.style.display = 'flex';
             
         } catch (error) {
             console.error('Error al abrir modal de reenvío:', error);
@@ -1942,19 +2040,27 @@ export function getWebAppScript() {
     
     async function loadDatosTab() {
         const parquesContainer = document.getElementById('parquesContainer');
-        parquesContainer.innerHTML = \`<p>Total: \${parquesData.length} parques</p>\`;
-        parquesData.forEach(parque => {
-            parquesContainer.innerHTML += \`<div>• \${parque.nombre}</div>\`;
-        });
+        if (parquesContainer && parquesData) {
+            parquesContainer.innerHTML = '<p>Total: ' + parquesData.length + ' parques</p>';
+            parquesData.forEach(parque => {
+                parquesContainer.innerHTML += '<div>• ' + parque.nombre + '</div>';
+            });
+        }
         
         const personalContainer = document.getElementById('personalContainer');
-        personalContainer.innerHTML = \`<p>Total: \${personalData.length} personas</p>\`;
+        if (personalContainer && personalData) {
+            personalContainer.innerHTML = '<p>Total: ' + personalData.length + ' personas</p>';
+        }
         
         const supervisoresContainer = document.getElementById('supervisoresContainer');
-        supervisoresContainer.innerHTML = \`<p>Total: \${supervisoresData.length} supervisores</p>\`;
+        if (supervisoresContainer && supervisoresData) {
+            supervisoresContainer.innerHTML = '<p>Total: ' + supervisoresData.length + ' supervisores</p>';
+        }
         
         const actividadesContainer = document.getElementById('actividadesContainer');
-        actividadesContainer.innerHTML = \`<p>Total: \${actividadesData.length} actividades</p>\`;
+        if (actividadesContainer && actividadesData) {
+            actividadesContainer.innerHTML = '<p>Total: ' + actividadesData.length + ' actividades</p>';
+        }
     }
     
     function formatDate(dateString) {

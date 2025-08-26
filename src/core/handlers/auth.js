@@ -3,13 +3,68 @@ import AuthService from '../services/authService.js';
 import AuditLogger from '../services/auditLogger.js';
 import { getLocalDateTime, formatLocalDateTime } from '../utils/time.js';
 
+// Función de validación de contraseñas seguras
+function validatePasswordStrength(password) {
+  const minLength = 8;
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"|,.<>/?\\]/.test(password);
+  
+  if (!password || password.length < minLength) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe tener al menos 8 caracteres' 
+    };
+  }
+  
+  if (!hasUppercase) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe contener al menos una letra mayúscula' 
+    };
+  }
+  
+  if (!hasLowercase) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe contener al menos una letra minúscula' 
+    };
+  }
+  
+  if (!hasNumbers) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe contener al menos un número' 
+    };
+  }
+  
+  if (!hasSpecialChar) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{};\':"|,.<>/?)' 
+    };
+  }
+  
+  return { valid: true };
+}
+
+// Headers de seguridad adicionales
+const securityHeaders = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;"
+};
+
 export async function handleLogin(request, corsHeaders, env, services) {
   const { rateLimiter, authService, auditLogger } = services;
   
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
   }
   
@@ -29,7 +84,7 @@ export async function handleLogin(request, corsHeaders, env, services) {
         message: 'Usuario y contraseña son requeridos' 
       }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
       });
     }
     
@@ -40,6 +95,9 @@ export async function handleLogin(request, corsHeaders, env, services) {
       LIMIT 1
     `).bind(usuario, usuario).first();
     
+    // Mensaje genérico para evitar enumerar usuarios
+    const genericLoginError = 'Usuario o contraseña incorrectos';
+    
     if (!userResult) {
       await auditLogger.log({
         action: 'LOGIN_FAILED',
@@ -47,15 +105,18 @@ export async function handleLogin(request, corsHeaders, env, services) {
         ip: clientIp,
         userEmail: usuario,
         success: false,
-        error: 'Usuario no encontrado'
+        error: 'Usuario no encontrado' // Log interno mantiene el detalle
       });
+      
+      // Añadir delay artificial para evitar timing attacks
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
       
       return new Response(JSON.stringify({ 
         success: false, 
-        message: 'Usuario no encontrado' 
+        message: genericLoginError // Mensaje genérico para el usuario
       }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
       });
     }
     
@@ -70,21 +131,28 @@ export async function handleLogin(request, corsHeaders, env, services) {
         userEmail: userResult.email,
         ip: clientIp,
         success: false,
-        error: 'Contraseña incorrecta'
+        error: 'Contraseña incorrecta' // Log interno mantiene el detalle
       });
+      
+      // Añadir delay artificial para evitar timing attacks
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
 
       return new Response(JSON.stringify({ 
         success: false, 
-        message: 'Contraseña incorrecta' 
+        message: genericLoginError // Mismo mensaje genérico
       }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
       });
     }
 
 
+    // Verificar si la contraseña cumple con los nuevos requisitos de seguridad
+    const passwordStrengthCheck = validatePasswordStrength(password);
+    const requiresPasswordUpdate = !passwordStrengthCheck.valid || userResult.password_temporal === 1;
+    
     // Actualizar hash si es necesario
-    if (verification.needsUpdate) {
+    if (verification.needsUpdate && passwordStrengthCheck.valid) {
       try {
         const newHash = await authService.hashPassword(password);
         await env.DB_MASTER.prepare(`
@@ -135,16 +203,29 @@ export async function handleLogin(request, corsHeaders, env, services) {
     // Generar JWT
     const token = await authService.createToken(userData);
     
-    // AQUÍ VA: Verificar si la contraseña es temporal
-    const esPasswordTemporal = userResult.password_temporal === 1;
-    if (esPasswordTemporal) {
+    // Verificar si la contraseña necesita ser cambiada (temporal o no cumple requisitos)
+    if (requiresPasswordUpdate) {
+        // Log del motivo del cambio requerido
+        await auditLogger.log({
+          action: 'PASSWORD_CHANGE_REQUIRED',
+          resource: 'auth',
+          userId: userData.id,
+          userEmail: userData.email,
+          ip: clientIp,
+          reason: !passwordStrengthCheck.valid ? 'weak_password' : 'temporary_password',
+          details: !passwordStrengthCheck.valid ? passwordStrengthCheck.message : 'Password marked as temporary'
+        });
+        
         return new Response(JSON.stringify({ 
             success: true,
             token,
             user: userData,
-            requirePasswordChange: true  // ← INDICADOR CLAVE
+            requirePasswordChange: true,
+            changeReason: !passwordStrengthCheck.valid 
+              ? 'Su contraseña actual no cumple con los requisitos de seguridad. Por favor, cree una nueva contraseña.'
+              : 'Debe cambiar su contraseña temporal por una permanente.'
         }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+            headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
         });
     }
     
@@ -166,7 +247,7 @@ export async function handleLogin(request, corsHeaders, env, services) {
       token,
       user: userData
     }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
     
   } catch (error) {
@@ -175,7 +256,7 @@ export async function handleLogin(request, corsHeaders, env, services) {
       message: 'Error interno del servidor' 
     }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
   }
 }
@@ -186,7 +267,7 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
   }
   
@@ -198,7 +279,7 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
         error: 'No autorizado'
       }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
       });
     }
     
@@ -207,14 +288,15 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
     
     const { newPassword } = await request.json();
     
-    // Validar contraseña
-    if (!newPassword || newPassword.length < 8) {
+    // Validar fortaleza de contraseña
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
       return new Response(JSON.stringify({ 
         success: false,
-        error: 'La contraseña debe tener al menos 8 caracteres'
+        error: passwordValidation.message
       }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
       });
     }
     
@@ -245,7 +327,7 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
       success: true,
       message: 'Contraseña actualizada exitosamente'
     }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
     
   } catch (error) {
@@ -254,7 +336,7 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
       error: 'Error al cambiar la contraseña'
     }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
     });
   }
 }
