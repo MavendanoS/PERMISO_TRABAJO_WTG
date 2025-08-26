@@ -165,7 +165,14 @@ export default class AuthService {
     const expected = b64url(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
     if (s !== expected) throw new SecurityError('Token inválido', 401);
 
-    return JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')));
+    
+    // Validar expiración del token
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      throw new SecurityError('Token expirado', 401);
+    }
+    
+    return payload;
   }
 
   decodeToken(token) {
