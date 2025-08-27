@@ -258,13 +258,7 @@ export function getWebApp() {
                 '<div class="card">' +
                     '<h3>Administración de Usuarios</h3>' +
                     
-                    '<!-- Botones de acción -->' +
-                    '<div style="margin-bottom: 24px;">' +
-                        '<button id="btnNuevoUsuario" class="btn btn-primary">Nuevo Usuario</button>' +
-                        '<button id="btnRefreshUsuarios" class="btn btn-secondary" style="margin-left: 12px;">Actualizar Lista</button>' +
-                    '</div>' +
-                    
-                    '<!-- Lista de usuarios -->' +
+                    '<!-- Lista de usuarios con controles dinámicos -->' +
                     '<div id="usuariosContainer" class="loading">Cargando usuarios...</div>' +
                 '</div>' +
             '</div>' +

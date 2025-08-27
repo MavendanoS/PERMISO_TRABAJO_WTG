@@ -147,12 +147,12 @@ export async function handleLogin(request, corsHeaders, env, services) {
     }
 
 
-    // Verificar si la contraseña cumple con los nuevos requisitos de seguridad
-    const passwordStrengthCheck = validatePasswordStrength(password);
-    const requiresPasswordUpdate = !passwordStrengthCheck.valid || userResult.password_temporal === 1;
+    // Determinar si se requiere actualización de contraseña:
+    // - Solo si es temporal O si el formato del hash es legacy y necesita actualización
+    const requiresPasswordUpdate = userResult.password_temporal === 1 || verification.needsUpdate;
     
-    // Actualizar hash si es necesario
-    if (verification.needsUpdate && passwordStrengthCheck.valid) {
+    // Actualizar hash si es necesario (formato legacy pero contraseña válida)
+    if (verification.needsUpdate && !requiresPasswordUpdate) {
       try {
         const newHash = await authService.hashPassword(password);
         await env.DB_MASTER.prepare(`
@@ -203,8 +203,12 @@ export async function handleLogin(request, corsHeaders, env, services) {
     // Generar JWT
     const token = await authService.createToken(userData);
     
-    // Verificar si la contraseña necesita ser cambiada (temporal o no cumple requisitos)
+    // Verificar si la contraseña necesita ser cambiada (temporal o formato legacy)
     if (requiresPasswordUpdate) {
+        // Determinar el motivo del cambio requerido
+        const isTemporary = userResult.password_temporal === 1;
+        const isLegacyFormat = verification.needsUpdate;
+        
         // Log del motivo del cambio requerido
         await auditLogger.log({
           action: 'PASSWORD_CHANGE_REQUIRED',
@@ -212,8 +216,8 @@ export async function handleLogin(request, corsHeaders, env, services) {
           userId: userData.id,
           userEmail: userData.email,
           ip: clientIp,
-          reason: !passwordStrengthCheck.valid ? 'weak_password' : 'temporary_password',
-          details: !passwordStrengthCheck.valid ? passwordStrengthCheck.message : 'Password marked as temporary'
+          reason: isTemporary ? 'temporary_password' : 'legacy_format',
+          details: isTemporary ? 'Password marked as temporary' : 'Password hash format needs updating'
         });
         
         return new Response(JSON.stringify({ 
@@ -221,9 +225,9 @@ export async function handleLogin(request, corsHeaders, env, services) {
             token,
             user: userData,
             requirePasswordChange: true,
-            changeReason: !passwordStrengthCheck.valid 
-              ? 'Su contraseña actual no cumple con los requisitos de seguridad. Por favor, cree una nueva contraseña.'
-              : 'Debe cambiar su contraseña temporal por una permanente.'
+            changeReason: isTemporary 
+              ? 'Debe cambiar su contraseña temporal por una permanente.'
+              : 'Su contraseña requiere actualización por motivos de seguridad. Por favor, ingrese nuevamente su contraseña actual.'
         }), {
             headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
         });
@@ -286,7 +290,18 @@ export async function handleChangePassword(request, corsHeaders, env, services) 
     const token = authHeader.substring(7);
     const userToken = await authService.verifyToken(token);
     
-    const { newPassword } = await request.json();
+    const rawData = await request.json();
+    const { newPassword } = InputSanitizer.sanitizeObject(rawData);
+    
+    if (!newPassword) {
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Nueva contraseña es requerida'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders, ...securityHeaders }
+      });
+    }
     
     // Validar fortaleza de contraseña
     const passwordValidation = validatePasswordStrength(newPassword);

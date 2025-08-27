@@ -2848,15 +2848,34 @@ export function getWebAppScript() {
             if (usuarios.length === 0) {
                 container.innerHTML = 
                     '<div class="admin-controls-bar">' +
-                        '<div class="admin-actions" style="justify-content: center;">' +
-                            '<p class="empty-state-message">No hay usuarios registrados. Use el botón "➕ Nuevo Usuario" arriba para crear el primer usuario.</p>' +
+                        '<div class="search-container">' +
+                            '<input type="text" id="usuariosSearchInput" placeholder="🔍 Buscar por nombre, email, empresa..." class="search-input" disabled>' +
+                            '<button class="btn-clear" onclick="clearUsuariosSearch()" title="Limpiar búsqueda" disabled>✕</button>' +
+                        '</div>' +
+                        '<div class="admin-actions">' +
+                            '<span id="usuariosCount" class="users-count">0 usuarios registrados</span>' +
+                            '<button id="btnNuevoUsuario" class="btn btn-primary" title="Crear nuevo usuario">' +
+                                '<span class="btn-icon">👤</span> Nuevo Usuario' +
+                            '</button>' +
+                            '<button id="btnRefreshUsuarios" class="btn btn-secondary" onclick="loadUsuarios()" title="Actualizar lista">' +
+                                '<span class="btn-icon">🔄</span>' +
+                            '</button>' +
                         '</div>' +
                     '</div>' +
                     '<div class="no-users-state">' +
                         '<div class="no-users-icon">👥</div>' +
                         '<div class="no-users-text">No hay usuarios registrados</div>' +
-                        '<div class="no-users-subtext">Crea el primer usuario para comenzar</div>' +
+                        '<div class="no-users-subtext">Crea el primer usuario usando el botón "Nuevo Usuario" arriba</div>' +
                     '</div>';
+                
+                // Configurar eventos para el botón de nuevo usuario
+                setTimeout(() => {
+                    const btnNuevoUsuario = document.getElementById('btnNuevoUsuario');
+                    if (btnNuevoUsuario) {
+                        btnNuevoUsuario.addEventListener('click', openNuevoUsuarioModal);
+                    }
+                }, 100);
+                
                 return;
             }
             
@@ -2871,6 +2890,9 @@ export function getWebAppScript() {
                 '</div>' +
                 '<div class="admin-actions">' +
                     '<span id="usuariosCount" class="users-count">' + usuarios.length + ' usuarios encontrados</span>' +
+                    '<button id="btnNuevoUsuario" class="btn btn-primary" title="Crear nuevo usuario">' +
+                        '<span class="btn-icon">👤</span> Nuevo Usuario' +
+                    '</button>' +
                     '<button id="btnRefreshUsuarios" class="btn btn-secondary" onclick="loadUsuarios()" title="Actualizar lista">' +
                         '<span class="btn-icon">🔄</span>' +
                     '</button>' +
@@ -2899,6 +2921,12 @@ export function getWebAppScript() {
                         filterUsuarios(this.value);
                     }, 300);
                 });
+            }
+            
+            // Configurar evento para botón de nuevo usuario
+            const btnNuevoUsuario = document.getElementById('btnNuevoUsuario');
+            if (btnNuevoUsuario) {
+                btnNuevoUsuario.addEventListener('click', openNuevoUsuarioModal);
             }
             
         } catch (error) {
