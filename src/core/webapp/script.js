@@ -2480,7 +2480,9 @@ export function getWebAppScript() {
         const statusDiv = document.getElementById('connectionStatus');
         
         try {
-            const response = await fetch(endpointObfuscator.getObfuscatedUrl('health'));
+            // Usar la URL ofuscada directamente
+            const healthUrl = API_BASE + '/h3a1th';
+            const response = await fetch(healthUrl);
             const data = await processAPIResponse(response);
             
             if (data.status === 'OK') {
