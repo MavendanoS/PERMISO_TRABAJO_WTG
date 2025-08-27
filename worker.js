@@ -4920,8 +4920,8 @@ function getWebAppScript() {
                             <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
                                 <strong>Detalles del cierre:</strong><br>
                                 • Observaciones: ${entrada.observaciones_cierre}<br>
-                                ${entrada.fecha_fin_trabajos ? `• Fecha fin trabajos: ${formatFecha(entrada.fecha_fin_trabajos)}` : ''}
-                                ${entrada.fecha_inicio_trabajos ? `<br>• Fecha inicio trabajos: ${formatFecha(entrada.fecha_inicio_trabajos)}` : ''}
+                                ${entrada.fecha_fin_trabajos ? '• Fecha fin trabajos: ' + formatFecha(entrada.fecha_fin_trabajos) : ''}
+                                ${entrada.fecha_inicio_trabajos ? '<br>• Fecha inicio trabajos: ' + formatFecha(entrada.fecha_inicio_trabajos) : ''}
                             </div>
                         ` : ''}
                     </div>

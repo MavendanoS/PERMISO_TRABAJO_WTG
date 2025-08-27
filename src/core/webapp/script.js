@@ -2484,7 +2484,7 @@ export function getWebAppScript() {
             const response = await ClientSecurity.makeSecureRequest('/admin-users');
             
             if (!response.success) {
-                container.innerHTML = `<div class="error">Error al cargar usuarios: ${response.error || 'Error desconocido'}</div>`;
+                container.innerHTML = '<div class="error">Error al cargar usuarios: ' + (response.error || 'Error desconocido') + '</div>';
                 return;
             }
             
@@ -2496,44 +2496,37 @@ export function getWebAppScript() {
             }
             
             // Crear tabla de usuarios
-            let html = `
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Usuario</th>
-                                <th>Email</th>
-                                <th>Rol</th>
-                                <th>Empresa</th>
-                                <th>Parques Autorizados</th>
-                                <th>Estado</th>
-                                <th>Password Temporal</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
+            let html = '';
+            html += '<div class="table-responsive">';
+            html += '<table class="data-table">';
+            html += '<thead>';
+            html += '<tr>';
+            html += '<th>Usuario</th>';
+            html += '<th>Email</th>';
+            html += '<th>Rol</th>';
+            html += '<th>Empresa</th>';
+            html += '<th>Parques Autorizados</th>';
+            html += '<th>Estado</th>';
+            html += '<th>Password Temporal</th>';
+            html += '<th>Acciones</th>';
+            html += '</tr>';
+            html += '</thead>';
+            html += '<tbody>';
             
             usuarios.forEach(usuario => {
-                html += `
-                    <tr>
-                        <td>${ClientSecurity.encodeHTML(usuario.usuario || '')}</td>
-                        <td>${ClientSecurity.encodeHTML(usuario.email || '')}</td>
-                        <td><span class="badge badge-${getRoleBadgeClass(usuario.rol)}">${ClientSecurity.encodeHTML(usuario.rol || '')}</span></td>
-                        <td>${ClientSecurity.encodeHTML(usuario.empresa || '')}</td>
-                        <td>${ClientSecurity.encodeHTML(usuario.parques_autorizados || '')}</td>
-                        <td><span class="badge badge-${usuario.estado === 'Activo' ? 'success' : 'danger'}">${ClientSecurity.encodeHTML(usuario.estado || '')}</span></td>
-                        <td><span class="badge badge-${usuario.password_temporal ? 'warning' : 'success'}">${usuario.password_temporal ? 'Sí' : 'No'}</span></td>
-                        <td>
-                            <button class="btn btn-small btn-secondary" onclick="editarUsuario(${usuario.id})" title="Editar">
-                                ✏️
-                            </button>
-                            <button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(${usuario.id}, '${ClientSecurity.encodeHTML(usuario.usuario)}')" title="Eliminar" style="margin-left: 4px;">
-                                🗑️
-                            </button>
-                        </td>
-                    </tr>
-                `;
+                html += '<tr>';
+                html += '<td>' + ClientSecurity.encodeHTML(usuario.usuario || '') + '</td>';
+                html += '<td>' + ClientSecurity.encodeHTML(usuario.email || '') + '</td>';
+                html += '<td><span class="badge badge-' + getRoleBadgeClass(usuario.rol) + '">' + ClientSecurity.encodeHTML(usuario.rol || '') + '</span></td>';
+                html += '<td>' + ClientSecurity.encodeHTML(usuario.empresa || '') + '</td>';
+                html += '<td>' + ClientSecurity.encodeHTML(usuario.parques_autorizados || '') + '</td>';
+                html += '<td><span class="badge badge-' + (usuario.estado === 'Activo' ? 'success' : 'danger') + '">' + ClientSecurity.encodeHTML(usuario.estado || '') + '</span></td>';
+                html += '<td><span class="badge badge-' + (usuario.password_temporal ? 'warning' : 'success') + '">' + (usuario.password_temporal ? 'Sí' : 'No') + '</span></td>';
+                html += '<td>';
+                html += '<button class="btn btn-small btn-secondary" onclick="editarUsuario(' + usuario.id + ')" title="Editar">✏️</button>';
+                html += '<button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(' + usuario.id + ', \'' + ClientSecurity.encodeHTML(usuario.usuario) + '\')" title="Eliminar" style="margin-left: 4px;">🗑️</button>';
+                html += '</td>';
+                html += '</tr>';
             });
             
             html += '</tbody></table></div>';
@@ -2566,7 +2559,7 @@ export function getWebAppScript() {
     
     async function editarUsuario(userId) {
         try {
-            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${userId}`);
+            const response = await ClientSecurity.makeSecureRequest('/admin-users/' + userId);
             
             if (!response.success) {
                 alert('Error al cargar datos del usuario: ' + (response.error || 'Error desconocido'));
@@ -2635,7 +2628,7 @@ export function getWebAppScript() {
                 return;
             }
             
-            const url = usuarioEditando ? `/admin-users/${usuarioEditando}` : '/admin-users';
+            const url = usuarioEditando ? '/admin-users/' + usuarioEditando : '/admin-users';
             const method = usuarioEditando ? 'PUT' : 'POST';
             
             const response = await ClientSecurity.makeSecureRequest(url, {
@@ -2672,7 +2665,7 @@ export function getWebAppScript() {
     
     function confirmarEliminarUsuario(userId, userName) {
         usuarioIdEliminar = userId;
-        document.getElementById('usuarioEliminarInfo').textContent = `Usuario: ${userName}`;
+        document.getElementById('usuarioEliminarInfo').textContent = 'Usuario: ' + userName;
         document.getElementById('confirmarEliminarUsuarioModal').style.display = 'flex';
     }
     
@@ -2684,7 +2677,7 @@ export function getWebAppScript() {
         confirmarBtn.textContent = 'Eliminando...';
         
         try {
-            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${usuarioIdEliminar}`, {
+            const response = await ClientSecurity.makeSecureRequest('/admin-users/' + usuarioIdEliminar, {
                 method: 'DELETE'
             });
             
@@ -2714,18 +2707,7 @@ export function getWebAppScript() {
     function showSuccessMessage(message) {
         // Crear y mostrar mensaje de éxito temporal
         const successDiv = document.createElement('div');
-        successDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success-color);
-            color: white;
-            padding: 16px 24px;
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 9999;
-            font-weight: 500;
-        `;
+        successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success-color); color: white; padding: 16px 24px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; font-weight: 500;';
         successDiv.textContent = message;
         document.body.appendChild(successDiv);
         
