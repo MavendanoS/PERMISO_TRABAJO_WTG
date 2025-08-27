@@ -748,7 +748,40 @@ async function initializeDatabase(db) {
 async function handleApiRequest(request, corsHeaders, env, services) {
   const { rateLimiter, authService, auditLogger } = services;
   const url = new URL(request.url);
-  const endpoint = url.pathname.replace('/api/', '');
+  const obfuscatedEndpoint = url.pathname.replace('/api/', '');
+  
+  // Mapeo de endpoints ofuscados a reales
+  const endpointMap = {
+    'a1b2c3': 'login',
+    'h3a1th': 'health', 
+    'p4s5ch': 'change-password',
+    'u5r5d4': 'users',
+    'p3r5n1': 'personal',
+    'pbp789': 'personal-by-parque',
+    's9p3r5': 'supervisores',
+    'a9u5r5': 'admin-users',
+    'p4rq35': 'parques',
+    'a3r0g5': 'aerogeneradores', 
+    'ac7v15': 'actividades',
+    'm4tr1x': 'matriz-riesgos',
+    'pr3m15': 'permisos',
+    'pd3t41': 'permiso-detalle',
+    'cp3rm0': 'cerrar-permiso',
+    'ap9r0v': 'aprobar-permiso',
+    'd4pr0b': 'detalle-aprobacion',
+    'acp9r0': 'aprobar-cierre-permiso',
+    'g3nr3g': 'generate-register',
+    'epx3xc': 'exportar-permiso-excel',
+    'eppdf9': 'exportar-permiso-pdf'
+  };
+  
+  // Deofuscar endpoint (separar base de parámetros adicionales)
+  const parts = obfuscatedEndpoint.split('/');
+  const baseObfuscated = parts[0];
+  const restPath = parts.slice(1).join('/');
+  
+  const realBase = endpointMap[baseObfuscated] || baseObfuscated;
+  const endpoint = restPath ? `${realBase}/${restPath}` : realBase;
   
   try {
     // Endpoints públicos

@@ -69,7 +69,7 @@ export function getWebAppScript() {
         const obfuscated = this.endpointMap[base];
         if (obfuscated) {
           const obfuscatedEndpoint = rest ? obfuscated + '/' + rest : obfuscated;
-          return API_BASE + '/v/' + obfuscatedEndpoint;
+          return API_BASE + '/' + obfuscatedEndpoint;
         }
         
         // Si no está mapeado, usar ruta normal (fallback)
