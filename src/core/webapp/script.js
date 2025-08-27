@@ -487,6 +487,21 @@ export function getWebAppScript() {
         on('closeUsuarioModalBtn', 'click', closeUsuarioModal);
         on('cancelarEliminarUsuarioBtn', 'click', closeConfirmarEliminarModal);
         on('confirmarEliminarUsuarioBtn', 'click', handleEliminarUsuario);
+        
+        // Event listeners para exportación
+        on('exportExcelBtn', 'click', () => executeExport('excel'));
+        on('exportPdfBtn', 'click', () => executeExport('pdf'));
+        on('cancelExportBtn', 'click', closeExportModal);
+        
+        // Cerrar modal de exportación al hacer clic fuera
+        const exportModal = document.getElementById('exportModal');
+        if (exportModal) {
+            exportModal.addEventListener('click', function(event) {
+                if (event.target === exportModal) {
+                    closeExportModal();
+                }
+            });
+        }
     }
     
     async function handleLogin(e) {
@@ -2626,34 +2641,7 @@ export function getWebAppScript() {
         alert(message);
     }
     
-    // Event listeners para el modal de exportación
-    document.addEventListener('DOMContentLoaded', function() {
-        const exportExcelBtn = document.getElementById('exportExcelBtn');
-        const exportPdfBtn = document.getElementById('exportPdfBtn');
-        const cancelExportBtn = document.getElementById('cancelExportBtn');
-        
-        if (exportExcelBtn) {
-            exportExcelBtn.addEventListener('click', () => executeExport('excel'));
-        }
-        
-        if (exportPdfBtn) {
-            exportPdfBtn.addEventListener('click', () => executeExport('pdf'));
-        }
-        
-        if (cancelExportBtn) {
-            cancelExportBtn.addEventListener('click', closeExportModal);
-        }
-        
-        // Cerrar modal al hacer clic fuera
-        const exportModal = document.getElementById('exportModal');
-        if (exportModal) {
-            exportModal.addEventListener('click', function(event) {
-                if (event.target === exportModal) {
-                    closeExportModal();
-                }
-            });
-        }
-    });
+    // Event listeners para exportación se configuran en setupEventListeners()
     
     // Función para editar un permiso existente
     window.editarPermiso = async function(permisoId) {
