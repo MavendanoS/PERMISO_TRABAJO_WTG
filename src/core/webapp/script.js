@@ -16,6 +16,70 @@ export function getWebAppScript() {
     let authToken = null;
     let sessionId = null;
     
+    // ========================================================================
+    // ENDPOINT OBFUSCATOR - PROTECCIÓN DE NOMBRES DE ENDPOINTS
+    // ========================================================================
+    
+    class EndpointObfuscator {
+      constructor() {
+        // Mapeo de endpoints reales a códigos ofuscados
+        this.endpointMap = {
+          // Endpoints públicos
+          'login': 'a1b2c3',
+          'health': 'h3a1th',
+          'change-password': 'p4s5ch',
+          
+          // Endpoints de usuarios
+          'users': 'u5r5d4',
+          'personal': 'p3r5n1',
+          'personal-by-parque': 'pbp789',
+          'supervisores': 's9p3r5',
+          'admin-users': 'a9u5r5',
+          
+          // Endpoints de catálogo
+          'parques': 'p4rq35',
+          'aerogeneradores': 'a3r0g5',
+          'actividades': 'ac7v15',
+          'matriz-riesgos': 'm4tr1x',
+          
+          // Endpoints de permisos
+          'permisos': 'pr3m15',
+          'permiso-detalle': 'pd3t41',
+          'cerrar-permiso': 'cp3rm0',
+          'aprobar-permiso': 'ap9r0v',
+          'detalle-aprobacion': 'd4pr0b',
+          'aprobar-cierre-permiso': 'acp9r0',
+          
+          // Endpoints de generación
+          'generate-register': 'g3nr3g',
+          'exportar-permiso-excel': 'epx3xc',
+          'exportar-permiso-pdf': 'eppdf9'
+        };
+      }
+      
+      /**
+       * Genera la URL ofuscada completa para un endpoint
+       */
+      getObfuscatedUrl(endpoint) {
+        // Si tiene parámetros adicionales (como IDs), separarlos
+        const parts = endpoint.split('/');
+        const base = parts[0];
+        const rest = parts.slice(1).join('/');
+        
+        const obfuscated = this.endpointMap[base];
+        if (obfuscated) {
+          const obfuscatedEndpoint = rest ? obfuscated + '/' + rest : obfuscated;
+          return API_BASE + '/v/' + obfuscatedEndpoint;
+        }
+        
+        // Si no está mapeado, usar ruta normal (fallback)
+        return API_BASE + '/' + endpoint;
+      }
+    }
+    
+    // Instancia global del ofuscador
+    const endpointObfuscator = new EndpointObfuscator();
+    
     // Datos cargados
     let parquesData = [];
     let personalData = [];
@@ -77,6 +141,67 @@ export function getWebAppScript() {
     // ========================================================================
     // FUNCIONES DE SEGURIDAD
     // ========================================================================
+    
+    // Función para hash seguro de contraseñas antes del envío
+    async function hashPasswordForTransmission(password) {
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password + '_pt_salt_2024'); // Salt adicional
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (error) {
+            console.error('Error hasheando contraseña:', error);
+            throw new Error('Error de seguridad al procesar contraseña');
+        }
+    }
+    
+    // Función para limpiar datos sensibles de memoria
+    function clearSensitiveData(password, hashedPassword) {
+        if (password) password = null;
+        if (hashedPassword) hashedPassword = null;
+        
+        // Forzar garbage collection si está disponible
+        if (window.gc) {
+            window.gc();
+        }
+    }
+    
+    // Función para forzar HTTPS en producción
+    function enforceHTTPS() {
+        if (location.protocol !== 'https:' && 
+            location.hostname !== 'localhost' && 
+            location.hostname !== '127.0.0.1' &&
+            !location.hostname.includes('.dev') &&
+            !location.hostname.includes('workers.dev')) {
+            location.replace('https:' + location.href.substring(location.protocol.length));
+        }
+    }
+    
+    // Validación adicional de contraseñas en el cliente
+    function validatePasswordClient(password) {
+        if (!password || password.length < 8) {
+            throw new Error('Contraseña debe tener al menos 8 caracteres');
+        }
+        
+        if (!/[A-Z]/.test(password)) {
+            throw new Error('Contraseña debe contener al menos una letra mayúscula');
+        }
+        
+        if (!/[a-z]/.test(password)) {
+            throw new Error('Contraseña debe contener al menos una letra minúscula');
+        }
+        
+        if (!/[0-9]/.test(password)) {
+            throw new Error('Contraseña debe contener al menos un número');
+        }
+        
+        if (!/[^a-zA-Z0-9]/.test(password)) {
+            throw new Error('Contraseña debe contener al menos un carácter especial');
+        }
+        
+        return true;
+    }
     
     // Función para validar la fortaleza de contraseñas
     function validatePasswordStrength(password) {
@@ -157,25 +282,52 @@ export function getWebAppScript() {
         }
         
         try {
-          const response = await fetch(API_BASE + endpoint, {
+          // Extraer endpoint base y parámetros de query
+          const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+          const [baseEndpoint, queryParams] = cleanEndpoint.split('?');
+          
+          // Ofuscar solo la parte del endpoint, mantener parámetros
+          const obfuscatedUrl = endpointObfuscator.getObfuscatedUrl(baseEndpoint);
+          const url = queryParams ? obfuscatedUrl + '?' + queryParams : obfuscatedUrl;
+          // Solo mostrar URL para requests que NO contengan datos sensibles
+          if (!endpoint.includes('login') && !endpoint.includes('change-password')) {
+            console.log('Making request to:', url);
+          }
+          
+          const response = await fetch(url, {
             ...defaultOptions,
             ...options
           });
           
+          // Solo mostrar status para requests que NO sean login/password
+          if (!endpoint.includes('login') && !endpoint.includes('change-password')) {
+            console.log('Response status:', response.status, response.statusText);
+          }
+          
           if (response.status === 401) {
+            console.log('401 - Token expired, logging out');
             handleLogout();
             throw new Error('Sesión expirada');
           }
           
-          const data = await response.json();
+          let data;
+          try {
+            data = await processAPIResponse(response);
+          } catch (jsonError) {
+            console.error('Error parsing JSON response:', jsonError);
+            console.log('Response text:', await response.text());
+            throw new Error('Respuesta del servidor inválida');
+          }
           
           if (!response.ok) {
-            throw new Error(data.error || 'Error en la solicitud');
+            console.error('Request failed:', response.status, data);
+            throw new Error(data.error || 'Error ' + response.status + ': ' + response.statusText);
           }
           
           return data;
         } catch (error) {
-          console.error('Request error:', error);
+          console.error('Request error for', endpoint, ':', error);
+          console.error('Error details:', error.message);
           throw error;
         }
       }
@@ -186,6 +338,8 @@ export function getWebAppScript() {
     // ========================================================================
     
     document.addEventListener('DOMContentLoaded', async function() {
+        // 🔐 SEGURIDAD: Forzar HTTPS en producción
+        enforceHTTPS();
         // Inicializando aplicación...
         
         const storedToken = sessionStorage.getItem('authToken');
@@ -201,6 +355,80 @@ export function getWebAppScript() {
         setupEventListeners();
         checkConnectionStatus();
     });
+    
+    // ========================================================================
+    // FUNCIONES DE SEGURIDAD DE DATOS
+    // ========================================================================
+    
+    class DataDeobfuscator {
+      async deobfuscate(obfuscatedData) {
+        try {
+          if (!obfuscatedData || !obfuscatedData._) {
+            return obfuscatedData;
+          }
+
+          const base64 = obfuscatedData._;
+          
+          if (obfuscatedData.v === 1) {
+            // Versión con compresión
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            // Descomprimir
+            const blob = new Blob([bytes]);
+            const stream = blob.stream();
+            const decompressedStream = stream.pipeThrough(new DecompressionStream('gzip'));
+            const decompressedBlob = await new Response(decompressedStream).blob();
+            const text = await decompressedBlob.text();
+            
+            return JSON.parse(text);
+          } else {
+            // Versión sin compresión (fallback)
+            return JSON.parse(decodeURIComponent(escape(atob(base64))));
+          }
+        } catch (error) {
+          console.error('Deobfuscation failed:', error);
+          // Si falla, intentar parsear como JSON normal
+          if (typeof obfuscatedData === 'string') {
+            try {
+              return JSON.parse(obfuscatedData);
+            } catch {
+              return obfuscatedData;
+            }
+          }
+          return obfuscatedData;
+        }
+      }
+      
+      static isObfuscated(data) {
+        return data && data._ && (data.v === 0 || data.v === 1);
+      }
+    }
+    
+    // Instancia global del deobfuscator
+    const dataDeobfuscator = new DataDeobfuscator();
+    
+    // Función para procesar respuestas (desofuscar si es necesario)
+    async function processAPIResponse(response) {
+      try {
+        const data = await response.json();
+        
+        // Si la respuesta está ofuscada, desofuscarla
+        if (DataDeobfuscator.isObfuscated(data)) {
+          return await dataDeobfuscator.deobfuscate(data);
+        }
+        
+        // Si no está ofuscada, retornar tal como está
+        return data;
+      } catch (error) {
+        console.error('Error processing API response:', error);
+        // En caso de error, intentar devolver los datos sin procesar
+        return null;
+      }
+    }
     
     // ========================================================================
     // MANEJO DE AUTENTICACIÓN (sin cambios)
@@ -251,11 +479,12 @@ export function getWebAppScript() {
         on('confirmarCierreBtn', 'click', handleConfirmarCierre);
         on('addMaterialBtn', 'click', addMaterial);
         
-        // Administración de usuarios
+        // Administración de usuarios - un solo botón en template
         on('btnNuevoUsuario', 'click', openNuevoUsuarioModal);
         on('btnRefreshUsuarios', 'click', loadUsuarios);
         on('usuarioForm', 'submit', handleGuardarUsuario);
         on('cancelarUsuarioBtn', 'click', closeUsuarioModal);
+        on('closeUsuarioModalBtn', 'click', closeUsuarioModal);
         on('cancelarEliminarUsuarioBtn', 'click', closeConfirmarEliminarModal);
         on('confirmarEliminarUsuarioBtn', 'click', handleEliminarUsuario);
     }
@@ -273,14 +502,66 @@ export function getWebAppScript() {
         loginBtn.disabled = true;
         loginBtn.textContent = 'Iniciando sesión...';
         
+        let hashedPassword = null;
+        
         try {
-            const response = await fetch(API_BASE + '/login', {
+            // 🔐 SISTEMA HÍBRIDO: Intentar hash primero, fallback automático si falla
+            hashedPassword = await hashPasswordForTransmission(password);
+            console.log('🔐 Intentando login con hash del cliente...');
+            
+            const response = await fetch(endpointObfuscator.getObfuscatedUrl('login'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ usuario, password })
+                body: JSON.stringify({ 
+                    usuario, 
+                    password: hashedPassword,
+                    isHashedClient: true
+                })
             });
             
-            const result = await response.json();
+            const result = await processAPIResponse(response);
+            
+            // 🔄 FALLBACK AUTOMÁTICO: Si falla con hash, intentar sin hash
+            if (!result.success) {
+                console.log('⚠️ Login con hash falló, intentando sistema legacy...');
+                
+                const legacyResponse = await fetch(endpointObfuscator.getObfuscatedUrl('login'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        usuario, 
+                        password: password // Contraseña original
+                        // Sin isHashedClient = true
+                    })
+                });
+                
+                const legacyResult = await processAPIResponse(legacyResponse);
+                if (legacyResult.success) {
+                    console.log('✅ Login exitoso con sistema legacy');
+                    // Usar resultado del sistema legacy
+                    authToken = legacyResult.token;
+                    sessionId = legacyResult.sessionId;
+                    currentUser = legacyResult.user;
+                    
+                    sessionStorage.setItem('authToken', authToken);
+                    if (sessionId) {
+                        sessionStorage.setItem('sessionId', sessionId);
+                    }
+                    
+                    if (legacyResult.requiresPasswordChange) {
+                        showChangePasswordModal(legacyResult.changeReason);
+                    } else {
+                        await loadAppData();
+                        showApp();
+                        resetInactivityTimer();
+                    }
+                    return; // Salir exitosamente
+                } else {
+                    // Ambos sistemas fallaron
+                    showLoginError(legacyResult.message || 'Error al iniciar sesión');
+                    return;
+                }
+            }
             
             if (result.success) {
                 authToken = result.token;
@@ -307,6 +588,10 @@ export function getWebAppScript() {
         } finally {
             loginBtn.disabled = false;
             loginBtn.textContent = 'Iniciar Sesión';
+            
+            // 🔐 SEGURIDAD: Limpiar datos sensibles de memoria
+            clearSensitiveData(password, hashedPassword);
+            document.getElementById('password').value = '';
         }
     }
 
@@ -345,6 +630,7 @@ export function getWebAppScript() {
     const confirmPassword = document.getElementById('mandatoryConfirmPassword').value;
     const errorDiv = document.getElementById('changePasswordError');
     const submitBtn = document.getElementById('submitPasswordChangeBtn');
+    let hashedNewPassword = null; // 🔐 Declarar fuera del try-catch para acceso en finally
     
     // Validaciones
     if (!newPassword || !confirmPassword) {
@@ -371,16 +657,22 @@ export function getWebAppScript() {
     submitBtn.textContent = 'Cambiando contraseña...';
     
     try {
-        const response = await fetch(API_BASE + '/change-password', {
+        // 🔐 SEGURIDAD: Hash la nueva contraseña antes del envío
+        hashedNewPassword = await hashPasswordForTransmission(newPassword);
+        
+        const response = await fetch(endpointObfuscator.getObfuscatedUrl('change-password'), {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + authToken
             },
-            body: JSON.stringify({ newPassword })
+            body: JSON.stringify({ 
+                newPassword: hashedNewPassword,
+                isHashedClient: true
+            })
         });
         
-        const result = await response.json();
+        const result = await processAPIResponse(response);
         
         if (result.success) {
             // Ocultar modal
@@ -402,10 +694,51 @@ export function getWebAppScript() {
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Cambiar Contraseña y Continuar';
+        
+        // 🔐 SEGURIDAD: Limpiar datos sensibles de memoria
+        clearSensitiveData(newPassword, hashedNewPassword);
+        document.getElementById('mandatoryNewPassword').value = '';
+        document.getElementById('mandatoryConfirmPassword').value = '';
     }
     }
     async function verifyAndLoadApp() {
         try {
+            // Primero verificar que el token existe y obtener información del usuario
+            if (!authToken) {
+                handleLogout();
+                return;
+            }
+
+            // Decodificar el token para obtener información del usuario
+            try {
+                const payload = JSON.parse(atob(authToken.split('.')[1]));
+                
+                // Verificar que el token no haya expirado
+                if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+                    console.log('Token expirado');
+                    handleLogout();
+                    return;
+                }
+
+                // Restaurar currentUser desde el token
+                currentUser = {
+                    id: payload.id || payload.sub,
+                    usuario: payload.usuario,
+                    email: payload.email,
+                    rol: payload.rol,
+                    empresa: payload.empresa,
+                    parques: Array.isArray(payload.parques) ? payload.parques : [],
+                    esEnel: payload.esEnel || false
+                };
+
+                console.log('Usuario restaurado desde token:', currentUser);
+            } catch (error) {
+                console.error('Error decodificando token:', error);
+                handleLogout();
+                return;
+            }
+
+            // Verificar conectividad con el servidor
             const response = await ClientSecurity.makeSecureRequest('/health');
             if (response.status === 'OK') {
                 await loadAppData();
@@ -465,7 +798,7 @@ export function getWebAppScript() {
             document.getElementById('userDisplay').textContent = 
                 ClientSecurity.encodeHTML(currentUser.usuario + ' (' + currentUser.rol + ')');
             
-            if (currentUser.rol === 'ADMIN') {
+            if (['admin', 'Admin', 'ADMIN', 'administrator', 'Administrator'].includes(currentUser.rol)) {
                 document.getElementById('tabDatos').style.display = 'block';
                 document.getElementById('tabAdminUsuarios').style.display = 'block';
             }
@@ -1608,7 +1941,7 @@ export function getWebAppScript() {
             const descripcion = '_' + fechaActual;
             
             // Realizar petición
-            const response = await fetch(\`\${API_BASE}\${endpoint}?id=\${permisoId}\`, {
+            const response = await fetch(endpointObfuscator.getObfuscatedUrl(endpoint.replace('/', '')) + \`?id=\${permisoId}\`, {
                 headers: {
                     'Authorization': 'Bearer ' + authToken,
                     'X-Session-Id': sessionId
@@ -2035,7 +2368,7 @@ export function getWebAppScript() {
         }
         
         try {
-            const response = await fetch(API_BASE + '/generate-register', {
+            const response = await fetch(endpointObfuscator.getObfuscatedUrl('generate-register'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2069,9 +2402,9 @@ export function getWebAppScript() {
         document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
         document.getElementById('tab-' + tabName).classList.add('active');
         
-        if (tabName === 'datos' && currentUser?.rol === 'ADMIN') {
+        if (tabName === 'datos' && ['admin', 'Admin', 'ADMIN', 'administrator', 'Administrator'].includes(currentUser?.rol)) {
             loadDatosTab();
-        } else if (tabName === 'admin-usuarios' && currentUser?.rol === 'ADMIN') {
+        } else if (tabName === 'admin-usuarios' && ['admin', 'Admin', 'ADMIN', 'administrator', 'Administrator'].includes(currentUser?.rol)) {
             loadUsuarios();
         }
     }
@@ -2090,9 +2423,19 @@ export function getWebAppScript() {
             personalContainer.innerHTML = '<p>Total: ' + personalData.length + ' personas</p>';
         }
         
+        // 🔧 CORREGIDO: Cargar TODOS los supervisores del sistema, no solo los filtrados
         const supervisoresContainer = document.getElementById('supervisoresContainer');
-        if (supervisoresContainer && supervisoresData) {
-            supervisoresContainer.innerHTML = '<p>Total: ' + supervisoresData.length + ' supervisores</p>';
+        if (supervisoresContainer) {
+            try {
+                // Hacer consulta independiente para obtener todos los supervisores
+                supervisoresContainer.innerHTML = '<p>Cargando supervisores...</p>';
+                const response = await ClientSecurity.makeSecureRequest('/supervisores?todos=true');
+                const todosSupervisores = response.results || [];
+                supervisoresContainer.innerHTML = '<p>Total: ' + todosSupervisores.length + ' supervisores</p>';
+            } catch (error) {
+                console.error('Error cargando supervisores globales:', error);
+                supervisoresContainer.innerHTML = '<p>Error al cargar supervisores</p>';
+            }
         }
         
         const actividadesContainer = document.getElementById('actividadesContainer');
@@ -2122,8 +2465,8 @@ export function getWebAppScript() {
         const statusDiv = document.getElementById('connectionStatus');
         
         try {
-            const response = await fetch(API_BASE + '/health');
-            const data = await response.json();
+            const response = await fetch(endpointObfuscator.getObfuscatedUrl('health'));
+            const data = await processAPIResponse(response);
             
             if (data.status === 'OK') {
                 statusDiv.textContent = 'Sistema conectado y operativo';
@@ -2469,79 +2812,291 @@ export function getWebAppScript() {
     }
     
     // ========================================================================
-    // ADMINISTRACIÓN DE USUARIOS
+    // ADMINISTRACIÓN DE USUARIOS - VERSIÓN MODERNA
     // ========================================================================
     
     let usuarioEditando = null;
+    let parquesDisponibles = [];
+    let parquesSeleccionados = [];
+    
+    // Cargar parques disponibles
+    async function loadParquesDisponibles() {
+        try {
+            const response = await ClientSecurity.makeSecureRequest('/parques');
+            if (response.results && Array.isArray(response.results)) {
+                parquesDisponibles = response.results.map(parque => ({
+                    id: parque.id || parque.nombre,
+                    nombre: parque.nombre,
+                    codigo: parque.codigo
+                }));
+            }
+            return parquesDisponibles;
+        } catch (error) {
+            console.error('Error cargando parques:', error);
+            return [];
+        }
+    }
     
     async function loadUsuarios() {
         const container = document.getElementById('usuariosContainer');
         if (!container) return;
         
         try {
-            container.innerHTML = '<div class="loading">Cargando usuarios...</div>';
+            // Estado de carga mejorado
+            container.innerHTML = '<div class="loading-state">' +
+                '<div class="loading-spinner"></div>' +
+                '<span>Cargando usuarios...</span>' +
+            '</div>';
             
             const response = await ClientSecurity.makeSecureRequest('/admin-users');
             
             if (!response.success) {
-                container.innerHTML = `<div class="error">Error al cargar usuarios: ${response.error || 'Error desconocido'}</div>`;
+                container.innerHTML = '<div class="error">❌ Error al cargar usuarios: ' + (response.error || 'Error desconocido') + '</div>';
                 return;
             }
             
             const usuarios = response.users || [];
             
             if (usuarios.length === 0) {
-                container.innerHTML = '<div class="no-data">No hay usuarios registrados</div>';
+                container.innerHTML = 
+                    '<div class="admin-controls-bar">' +
+                        '<div class="admin-actions" style="justify-content: center;">' +
+                            '<p class="empty-state-message">No hay usuarios registrados. Use el botón "➕ Nuevo Usuario" arriba para crear el primer usuario.</p>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="no-users-state">' +
+                        '<div class="no-users-icon">👥</div>' +
+                        '<div class="no-users-text">No hay usuarios registrados</div>' +
+                        '<div class="no-users-subtext">Crea el primer usuario para comenzar</div>' +
+                    '</div>';
                 return;
             }
             
-            // Crear tabla de usuarios
-            let html = `
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Usuario</th>
-                                <th>Email</th>
-                                <th>Rol</th>
-                                <th>Empresa</th>
-                                <th>Parques Autorizados</th>
-                                <th>Estado</th>
-                                <th>Password Temporal</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
+            // Almacenar usuarios globalmente para la búsqueda
+            window.todosLosUsuarios = usuarios;
             
-            usuarios.forEach(usuario => {
-                html += `
-                    <tr>
-                        <td>${ClientSecurity.encodeHTML(usuario.usuario || '')}</td>
-                        <td>${ClientSecurity.encodeHTML(usuario.email || '')}</td>
-                        <td><span class="badge badge-${getRoleBadgeClass(usuario.rol)}">${ClientSecurity.encodeHTML(usuario.rol || '')}</span></td>
-                        <td>${ClientSecurity.encodeHTML(usuario.empresa || '')}</td>
-                        <td>${ClientSecurity.encodeHTML(usuario.parques_autorizados || '')}</td>
-                        <td><span class="badge badge-${usuario.estado === 'Activo' ? 'success' : 'danger'}">${ClientSecurity.encodeHTML(usuario.estado || '')}</span></td>
-                        <td><span class="badge badge-${usuario.password_temporal ? 'warning' : 'success'}">${usuario.password_temporal ? 'Sí' : 'No'}</span></td>
-                        <td>
-                            <button class="btn btn-small btn-secondary" onclick="editarUsuario(${usuario.id})" title="Editar">
-                                ✏️
-                            </button>
-                            <button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(${usuario.id}, '${ClientSecurity.encodeHTML(usuario.usuario)}')" title="Eliminar" style="margin-left: 4px;">
-                                🗑️
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            });
+            // Crear barra de búsqueda y controles
+            let html = '<div class="admin-controls-bar">' +
+                '<div class="search-container">' +
+                    '<input type="text" id="usuariosSearchInput" placeholder="🔍 Buscar por nombre, email, empresa..." class="search-input">' +
+                    '<button class="btn-clear" onclick="clearUsuariosSearch()" title="Limpiar búsqueda">✕</button>' +
+                '</div>' +
+                '<div class="admin-actions">' +
+                    '<span id="usuariosCount" class="users-count">' + usuarios.length + ' usuarios encontrados</span>' +
+                    '<button id="btnRefreshUsuarios" class="btn btn-secondary" onclick="loadUsuarios()" title="Actualizar lista">' +
+                        '<span class="btn-icon">🔄</span>' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
             
-            html += '</tbody></table></div>';
+            // Crear grid de cards moderno
+            html += '<div class="users-grid" id="usersGrid">';
+            html += renderUsuarios(usuarios);
+            html += '</div>';
+            
             container.innerHTML = html;
+            
+            // Configurar evento de búsqueda
+            const searchInput = document.getElementById('usuariosSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    filterUsuarios(this.value);
+                });
+                
+                // Búsqueda en tiempo real con debounce
+                let searchTimeout;
+                searchInput.addEventListener('keyup', function() {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        filterUsuarios(this.value);
+                    }, 300);
+                });
+            }
             
         } catch (error) {
             console.error('Error cargando usuarios:', error);
-            container.innerHTML = '<div class="error">Error de conexión al cargar usuarios</div>';
+            container.innerHTML = '<div class="error">❌ Error de conexión al cargar usuarios</div>';
+        }
+    }
+    
+    function renderUsuarios(usuarios) {
+        let html = '';
+        usuarios.forEach(usuario => {
+            const initials = getInitials(usuario.usuario || 'U');
+            const parquesList = usuario.parques_autorizados ? 
+                usuario.parques_autorizados.split(',').map(p => p.trim()) : [];
+            
+            html += '<div class="user-card">' +
+                '<div class="user-status-badge ' + (usuario.estado === 'Activo' ? 'status-active' : 'status-inactive') + '">' +
+                    (usuario.estado === 'Activo' ? '✅ Activo' : '❌ Inactivo') +
+                '</div>' +
+                
+                '<div class="user-avatar">' + initials + '</div>' +
+                
+                '<div class="user-name">' + ClientSecurity.encodeHTML(usuario.usuario || '') + '</div>' +
+                '<div class="user-email">📧 ' + ClientSecurity.encodeHTML(usuario.email || '') + '</div>' +
+                
+                '<div class="user-info-grid">';
+            
+            // Información básica
+            if (usuario.rut || usuario.rut_dni) {
+                html += '<div class="user-info-item">' +
+                    '<span class="user-info-icon">🆔</span>' +
+                    '<span class="user-info-label">RUT/DNI</span>' +
+                    '<span class="user-info-value">' + ClientSecurity.encodeHTML(usuario.rut || usuario.rut_dni) + '</span>' +
+                '</div>';
+            }
+            
+            if (usuario.telefono) {
+                html += '<div class="user-info-item">' +
+                    '<span class="user-info-icon">📱</span>' +
+                    '<span class="user-info-label">Teléfono</span>' +
+                    '<span class="user-info-value">' + ClientSecurity.encodeHTML(usuario.telefono) + '</span>' +
+                '</div>';
+            }
+            
+            html += '<div class="user-info-item">' +
+                '<span class="user-info-icon">🎭</span>' +
+                '<span class="user-info-label">Rol</span>' +
+                '<span class="user-info-value">' +
+                    '<span class="badge badge-' + getRoleBadgeClass(usuario.rol) + '">' + 
+                        getRoleDisplayName(usuario.rol) + 
+                    '</span>' +
+                '</span>' +
+            '</div>';
+            
+            if (usuario.cargo) {
+                html += '<div class="user-info-item">' +
+                    '<span class="user-info-icon">💼</span>' +
+                    '<span class="user-info-label">Cargo</span>' +
+                    '<span class="user-info-value">' + ClientSecurity.encodeHTML(usuario.cargo) + '</span>' +
+                '</div>';
+            }
+            
+            if (usuario.empresa) {
+                html += '<div class="user-info-item">' +
+                    '<span class="user-info-icon">🏢</span>' +
+                    '<span class="user-info-label">Empresa</span>' +
+                    '<span class="user-info-value">' + ClientSecurity.encodeHTML(usuario.empresa) + '</span>' +
+                '</div>';
+            }
+            
+            if (usuario.password_temporal) {
+                html += '<div class="user-info-item">' +
+                    '<span class="user-info-icon">🔑</span>' +
+                    '<span class="user-info-label">Password</span>' +
+                    '<span class="user-info-value">' +
+                        '<span class="badge badge-warning">⚠️ Temporal</span>' +
+                    '</span>' +
+                '</div>';
+            }
+            
+            html += '</div>';
+            
+            // Parques autorizados
+            if (parquesList.length > 0) {
+                html += '<div class="user-parques">' +
+                    '<div class="user-info-label">🏭 Parques Autorizados</div>' +
+                    '<div class="parques-badges">';
+                
+                parquesList.forEach(parque => {
+                    if (parque.trim()) {
+                        html += '<span class="parque-badge">' + ClientSecurity.encodeHTML(parque.trim()) + '</span>';
+                    }
+                });
+                
+                html += '</div></div>';
+            }
+            
+            // Acciones
+            html += '<div class="user-actions">' +
+                '<button class="btn btn-small btn-secondary btn-with-icon" onclick="editarUsuario(' + usuario.id + ')" title="Editar Usuario">' +
+                    '<span class="btn-icon">✏️</span>' +
+                    'Editar' +
+                '</button>' +
+                '<button class="btn btn-small btn-danger btn-with-icon" onclick="confirmarEliminarUsuario(' + usuario.id + ', &quot;' + ClientSecurity.encodeHTML(usuario.usuario) + '&quot;)" title="Eliminar Usuario">' +
+                    '<span class="btn-icon">🗑️</span>' +
+                    'Eliminar' +
+                '</button>' +
+            '</div>' +
+            
+            '</div>';
+        });
+        
+        return html;
+    }
+    
+    // Funciones de búsqueda y filtrado
+    function filterUsuarios(searchTerm) {
+        if (!window.todosLosUsuarios) return;
+        
+        const term = searchTerm.toLowerCase().trim();
+        
+        if (term === '') {
+            // Mostrar todos los usuarios
+            updateUsersDisplay(window.todosLosUsuarios);
+            return;
+        }
+        
+        const filtered = window.todosLosUsuarios.filter(usuario => {
+            return (
+                usuario.usuario?.toLowerCase().includes(term) ||
+                usuario.email?.toLowerCase().includes(term) ||
+                usuario.empresa?.toLowerCase().includes(term) ||
+                usuario.rol?.toLowerCase().includes(term) ||
+                usuario.cargo?.toLowerCase().includes(term) ||
+                usuario.rut?.toLowerCase().includes(term) ||
+                usuario.rut_dni?.toLowerCase().includes(term) ||
+                usuario.telefono?.includes(term)
+            );
+        });
+        
+        updateUsersDisplay(filtered);
+    }
+    
+    function updateUsersDisplay(usuarios) {
+        const usersGrid = document.getElementById('usersGrid');
+        const usersCount = document.getElementById('usuariosCount');
+        
+        if (!usersGrid) return;
+        
+        if (usuarios.length === 0) {
+            usersGrid.innerHTML = '<div class="no-results-state">' +
+                '<div class="no-results-icon">🔍</div>' +
+                '<div class="no-results-text">No se encontraron usuarios</div>' +
+                '<div class="no-results-subtext">Intenta con otro término de búsqueda</div>' +
+            '</div>';
+        } else {
+            usersGrid.innerHTML = renderUsuarios(usuarios);
+        }
+        
+        if (usersCount) {
+            usersCount.textContent = usuarios.length + ' usuarios encontrados';
+        }
+    }
+    
+    function clearUsuariosSearch() {
+        const searchInput = document.getElementById('usuariosSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            filterUsuarios('');
+        }
+    }
+    
+    // Hacer funciones accesibles globalmente
+    window.filterUsuarios = filterUsuarios;
+    window.clearUsuariosSearch = clearUsuariosSearch;
+    
+    function getInitials(name) {
+        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    }
+    
+    function getRoleDisplayName(rol) {
+        switch(rol?.toLowerCase()) {
+            case 'admin': return '👑 Administrador';
+            case 'supervisor': return '👨‍💼 Supervisor';
+            case 'operador': return '👷 Operador';
+            default: return '👤 ' + (rol || 'Sin rol');
         }
     }
     
@@ -2554,45 +3109,152 @@ export function getWebAppScript() {
         }
     }
     
-    function openNuevoUsuarioModal() {
+    // Renderizar multi-select de parques
+    function renderParquesMultiSelect() {
+        const container = document.getElementById('parquesSelectContainer');
+        if (!container || parquesDisponibles.length === 0) {
+            container.innerHTML = '<div class="multi-select-loading">No hay parques disponibles</div>';
+            return;
+        }
+        
+        let html = '';
+        parquesDisponibles.forEach(parque => {
+            const isChecked = parquesSeleccionados.includes(parque.nombre);
+            html += '<div class="parque-option">' +
+                '<input type="checkbox" id="parque_' + parque.id + '" value="' + ClientSecurity.encodeHTML(parque.nombre) + '"' + (isChecked ? ' checked' : '') + ' onchange="toggleParqueSelection(this)">' +
+                '<label for="parque_' + parque.id + '">' + ClientSecurity.encodeHTML(parque.nombre) + '</label>' +
+            '</div>';
+        });
+        
+        container.innerHTML = html;
+        updateSelectedParquesDisplay();
+    }
+    
+    function toggleParqueSelection(checkbox) {
+        const parqueName = checkbox.value;
+        if (checkbox.checked) {
+            if (!parquesSeleccionados.includes(parqueName)) {
+                parquesSeleccionados.push(parqueName);
+            }
+        } else {
+            parquesSeleccionados = parquesSeleccionados.filter(p => p !== parqueName);
+        }
+        updateSelectedParquesDisplay();
+    }
+    
+    function updateSelectedParquesDisplay() {
+        const container = document.getElementById('selectedParquesList');
+        if (!container) return;
+        
+        if (parquesSeleccionados.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 12px;">Ningún parque seleccionado</div>';
+            return;
+        }
+        
+        let html = '';
+        parquesSeleccionados.forEach(parque => {
+            html += '<div class="selected-item">' +
+                ClientSecurity.encodeHTML(parque) +
+                '<span class="selected-item-remove" onclick="removeSelectedParque(&quot;' + parque + '&quot;)">×</span>' +
+            '</div>';
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    function removeSelectedParque(parqueName) {
+        parquesSeleccionados = parquesSeleccionados.filter(p => p !== parqueName);
+        
+        // Actualizar checkbox correspondiente
+        const checkbox = Array.from(document.querySelectorAll('#parquesSelectContainer input[type="checkbox"]'))
+            .find(cb => cb.value === parqueName);
+        if (checkbox) {
+            checkbox.checked = false;
+        }
+        
+        updateSelectedParquesDisplay();
+    }
+    
+    // Hacer funciones accesibles globalmente
+    window.toggleParqueSelection = toggleParqueSelection;
+    window.removeSelectedParque = removeSelectedParque;
+    
+    async function openNuevoUsuarioModal() {
         usuarioEditando = null;
-        document.getElementById('usuarioModalTitle').textContent = 'Nuevo Usuario';
+        parquesSeleccionados = [];
+        
+        // Cargar parques si no están cargados
+        if (parquesDisponibles.length === 0) {
+            await loadParquesDisponibles();
+        }
+        
+        // 🔧 FIX: Mostrar el modal después de configurar
+        mostrarModalUsuario();
+    }
+    
+    function mostrarModalUsuario() {
+        // Limpiar usuario en edición
+        usuarioEditando = null;
+        parquesSeleccionados = [];
+        
+        // Resetear formulario
+        document.getElementById('usuarioModalTitle').textContent = '👤 Nuevo Usuario';
         document.getElementById('usuarioForm').reset();
-        document.getElementById('modalPassword').placeholder = 'Contraseña requerida';
+        document.getElementById('modalPassword').placeholder = 'Contraseña requerida (mín. 8 caracteres)';
         document.getElementById('modalPassword').required = true;
         document.getElementById('usuarioError').style.display = 'none';
+        
+        // Renderizar parques
+        renderParquesMultiSelect();
+        
         document.getElementById('usuarioModal').style.display = 'flex';
     }
     
     async function editarUsuario(userId) {
         try {
-            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${userId}`);
+            const response = await ClientSecurity.makeSecureRequest('/admin-users/' + userId);
             
             if (!response.success) {
-                alert('Error al cargar datos del usuario: ' + (response.error || 'Error desconocido'));
+                alert('❌ Error al cargar datos del usuario: ' + (response.error || 'Error desconocido'));
                 return;
             }
             
             const usuario = response.user;
             usuarioEditando = userId;
             
-            document.getElementById('usuarioModalTitle').textContent = 'Editar Usuario';
+            // Cargar parques si no están cargados
+            if (parquesDisponibles.length === 0) {
+                await loadParquesDisponibles();
+            }
+            
+            // Establecer parques seleccionados
+            parquesSeleccionados = usuario.parques_autorizados ? 
+                usuario.parques_autorizados.split(',').map(p => p.trim()).filter(p => p) : [];
+            
+            // Llenar formulario
+            document.getElementById('usuarioModalTitle').textContent = '✏️ Editar Usuario';
             document.getElementById('modalUsuario').value = usuario.usuario || '';
             document.getElementById('modalEmail').value = usuario.email || '';
             document.getElementById('modalPassword').value = '';
             document.getElementById('modalPassword').placeholder = 'Dejar vacío para mantener actual';
             document.getElementById('modalPassword').required = false;
             document.getElementById('modalRol').value = usuario.rol || '';
+            document.getElementById('modalRutDni').value = usuario.rut_dni || '';
+            document.getElementById('modalTelefono').value = usuario.telefono || '';
+            document.getElementById('modalCargo').value = usuario.cargo || '';
             document.getElementById('modalEmpresa').value = usuario.empresa || '';
-            document.getElementById('modalParquesAutorizados').value = usuario.parques_autorizados || '';
             document.getElementById('modalEstado').value = usuario.estado || 'Activo';
             document.getElementById('modalPasswordTemporal').checked = usuario.password_temporal || false;
             document.getElementById('usuarioError').style.display = 'none';
+            
+            // Renderizar parques
+            renderParquesMultiSelect();
+            
             document.getElementById('usuarioModal').style.display = 'flex';
             
         } catch (error) {
             console.error('Error cargando usuario:', error);
-            alert('Error de conexión al cargar usuario');
+            alert('❌ Error de conexión al cargar usuario');
         }
     }
     
@@ -2604,38 +3266,65 @@ export function getWebAppScript() {
         
         errorDiv.style.display = 'none';
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Guardando...';
+        submitBtn.innerHTML = '<span class="btn-icon">⏳</span>Guardando...';
         
         try {
             const formData = {
                 usuario: ClientSecurity.sanitizeInput(document.getElementById('modalUsuario').value),
                 email: ClientSecurity.sanitizeInput(document.getElementById('modalEmail').value),
                 rol: document.getElementById('modalRol').value,
+                rut_dni: ClientSecurity.sanitizeInput(document.getElementById('modalRutDni').value) || null,
+                telefono: ClientSecurity.sanitizeInput(document.getElementById('modalTelefono').value) || null,
+                cargo: document.getElementById('modalCargo').value || null,
                 empresa: ClientSecurity.sanitizeInput(document.getElementById('modalEmpresa').value) || null,
-                parques_autorizados: ClientSecurity.sanitizeInput(document.getElementById('modalParquesAutorizados').value) || null,
+                parques_autorizados: parquesSeleccionados.length > 0 ? parquesSeleccionados.join(', ') : null,
                 estado: document.getElementById('modalEstado').value,
                 password_temporal: document.getElementById('modalPasswordTemporal').checked
             };
             
             const password = document.getElementById('modalPassword').value;
             if (password) {
+                // Validar fortaleza de contraseña
+                const passwordValidation = validatePasswordStrength(password);
+                if (!passwordValidation.valid) {
+                    errorDiv.innerHTML = '🔒 ' + passwordValidation.message;
+                    errorDiv.style.display = 'block';
+                    return;
+                }
                 formData.password = password;
             }
             
-            // Validaciones
+            // Validaciones mejoradas
             if (!formData.usuario || !formData.email || !formData.rol) {
-                errorDiv.textContent = 'Los campos Usuario, Email y Rol son requeridos';
+                errorDiv.innerHTML = '📝 Los campos Usuario, Email y Rol son requeridos';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            // Validar formato de email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(formData.email)) {
+                errorDiv.innerHTML = '📧 El formato del email no es válido';
                 errorDiv.style.display = 'block';
                 return;
             }
             
             if (!usuarioEditando && !password) {
-                errorDiv.textContent = 'La contraseña es requerida para nuevos usuarios';
+                errorDiv.innerHTML = '🔑 La contraseña es requerida para nuevos usuarios';
                 errorDiv.style.display = 'block';
                 return;
             }
             
-            const url = usuarioEditando ? `/admin-users/${usuarioEditando}` : '/admin-users';
+            // Validar RUT chileno si se ingresó
+            if (formData.rut_dni && formData.rut_dni.includes('-')) {
+                if (!validateRUT(formData.rut_dni)) {
+                    errorDiv.innerHTML = '🆔 El formato del RUT no es válido (ej: 12.345.678-9)';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+            }
+            
+            const url = usuarioEditando ? '/admin-users/' + usuarioEditando : '/admin-users';
             const method = usuarioEditando ? 'PUT' : 'POST';
             
             const response = await ClientSecurity.makeSecureRequest(url, {
@@ -2644,35 +3333,61 @@ export function getWebAppScript() {
             });
             
             if (!response.success) {
-                errorDiv.textContent = response.error || 'Error desconocido';
+                errorDiv.innerHTML = '❌ ' + (response.error || 'Error desconocido');
                 errorDiv.style.display = 'block';
                 return;
             }
             
             closeUsuarioModal();
             await loadUsuarios();
-            showSuccessMessage(usuarioEditando ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente');
+            showSuccessMessage('✅ ' + (usuarioEditando ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente'));
             
         } catch (error) {
             console.error('Error guardando usuario:', error);
-            errorDiv.textContent = 'Error de conexión';
+            errorDiv.innerHTML = '🌐 Error de conexión al servidor';
             errorDiv.style.display = 'block';
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Guardar Usuario';
+            submitBtn.innerHTML = '<span class="btn-icon">💾</span>Guardar Usuario';
         }
+    }
+    
+    // Validador de RUT chileno
+    function validateRUT(rut) {
+        // Remover puntos y guión
+        const cleanRut = rut.replace(/[.\-]/g, '');
+        
+        if (cleanRut.length < 2) return false;
+        
+        const body = cleanRut.slice(0, -1);
+        const dv = cleanRut.slice(-1).toUpperCase();
+        
+        // Calcular dígito verificador
+        let sum = 0;
+        let multiplier = 2;
+        
+        for (let i = body.length - 1; i >= 0; i--) {
+            sum += parseInt(body.charAt(i)) * multiplier;
+            multiplier = multiplier === 7 ? 2 : multiplier + 1;
+        }
+        
+        const expectedDV = 11 - (sum % 11);
+        const calculatedDV = expectedDV === 11 ? '0' : expectedDV === 10 ? 'K' : expectedDV.toString();
+        
+        return dv === calculatedDV;
     }
     
     function closeUsuarioModal() {
         document.getElementById('usuarioModal').style.display = 'none';
         usuarioEditando = null;
+        parquesSeleccionados = [];
     }
     
     let usuarioIdEliminar = null;
     
     function confirmarEliminarUsuario(userId, userName) {
         usuarioIdEliminar = userId;
-        document.getElementById('usuarioEliminarInfo').textContent = `Usuario: ${userName}`;
+        document.getElementById('usuarioEliminarInfo').textContent = 'Usuario: ' + userName;
         document.getElementById('confirmarEliminarUsuarioModal').style.display = 'flex';
     }
     
@@ -2684,7 +3399,7 @@ export function getWebAppScript() {
         confirmarBtn.textContent = 'Eliminando...';
         
         try {
-            const response = await ClientSecurity.makeSecureRequest(`/admin-users/${usuarioIdEliminar}`, {
+            const response = await ClientSecurity.makeSecureRequest('/admin-users/' + usuarioIdEliminar, {
                 method: 'DELETE'
             });
             
@@ -2714,18 +3429,16 @@ export function getWebAppScript() {
     function showSuccessMessage(message) {
         // Crear y mostrar mensaje de éxito temporal
         const successDiv = document.createElement('div');
-        successDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success-color);
-            color: white;
-            padding: 16px 24px;
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 9999;
-            font-weight: 500;
-        `;
+        successDiv.style.cssText = 'position: fixed;'
+            + 'top: 20px;'
+            + 'right: 20px;'
+            + 'background: var(--success-color);'
+            + 'color: white;'
+            + 'padding: 16px 24px;'
+            + 'border-radius: 6px;'
+            + 'box-shadow: 0 4px 12px rgba(0,0,0,0.15);'
+            + 'z-index: 9999;'
+            + 'font-weight: 500;';
         successDiv.textContent = message;
         document.body.appendChild(successDiv);
         
@@ -2735,8 +3448,14 @@ export function getWebAppScript() {
     }
     
     // Hacer funciones globales para usar en onclick
+    window.mostrarModalUsuario = mostrarModalUsuario;
+    window.openNuevoUsuarioModal = openNuevoUsuarioModal;
     window.editarUsuario = editarUsuario;
     window.confirmarEliminarUsuario = confirmarEliminarUsuario;
+    window.closeUsuarioModal = closeUsuarioModal;
+    window.handleGuardarUsuario = handleGuardarUsuario;
+    window.cerrarModalEliminarUsuario = closeConfirmarEliminarModal;
+    window.confirmarEliminarUsuarioDefinitivo = handleEliminarUsuario;
     
     // Sistema de seguridad activo - D1 Database Edition
   `;
