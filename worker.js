@@ -746,9 +746,12 @@ async function initializeDatabase(db) {
 }
 
 async function handleApiRequest(request, corsHeaders, env, services) {
+  console.log('handleApiRequest: Starting API request handling');
   const { rateLimiter, authService, auditLogger } = services;
+  console.log('handleApiRequest: Services extracted');
   const url = new URL(request.url);
   const endpoint = url.pathname.replace('/api/', '');
+  console.log('handleApiRequest: Endpoint:', endpoint);
   
   try {
     // Endpoints públicos
@@ -771,6 +774,7 @@ async function handleApiRequest(request, corsHeaders, env, services) {
     
     switch (endpoint) {
       case 'login':
+        console.log('handleApiRequest: About to call handleLogin');
         return await handleLogin(request, corsHeaders, env, services);
       case 'change-password':
         return await handleChangePassword(request, corsHeaders, env, services);
@@ -827,9 +831,12 @@ async function handleApiRequest(request, corsHeaders, env, services) {
 // ============================================================================
 
 async function handleLogin(request, corsHeaders, env, services) {
-  const { rateLimiter, authService, auditLogger } = services;
-  
-  if (request.method !== 'POST') {
+  try {
+    console.log('handleLogin: Starting login process');
+    const { rateLimiter, authService, auditLogger } = services;
+    console.log('handleLogin: Services extracted');
+    
+    if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -993,9 +1000,10 @@ async function handleLogin(request, corsHeaders, env, services) {
     
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Login error stack:', error.stack);
     return new Response(JSON.stringify({ 
       success: false, 
-      message: 'Error interno del servidor' 
+      message: 'Error interno del servidor: ' + error.message
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -4809,7 +4817,7 @@ function getWebAppScript() {
             return;
         }
         
-        if (!confirm(`¿Está seguro de ${accion.toLowerCase()} este cierre?`)) return;
+        if (!confirm("¿Está seguro de " + accion.toLowerCase() + " este cierre?")) return;
         
         const originalText = confirmBtn.textContent;
         confirmBtn.disabled = true;
@@ -4826,7 +4834,7 @@ function getWebAppScript() {
             });
             
             if (response.success) {
-                alert(`Cierre ${accion === 'APROBAR' ? 'aprobado' : 'rechazado'} exitosamente`);
+                alert("Cierre " + (accion === "APROBAR" ? "aprobado" : "rechazado") + " exitosamente");
                 closeAprobarCierreModal();
                 await loadPermisos();
             } else {
@@ -4849,7 +4857,7 @@ function getWebAppScript() {
         modal.style.display = 'flex';
         
         try {
-            const response = await ClientSecurity.makeSecureRequest(`/historial-cierre?permisoId=${permisoId}`);
+            const response = await ClientSecurity.makeSecureRequest("/historial-cierre?permisoId=" + permisoId);
             
             if (response.success) {
                 const { permiso, historial, totalIntentos, totalRechazos } = response;
@@ -4861,7 +4869,7 @@ function getWebAppScript() {
                 
                 renderHistorialTimeline(historial);
             } else {
-                document.getElementById('historialTimeline').innerHTML = `<div class="error">Error: ${response.error}</div>`;
+                document.getElementById('historialTimeline').innerHTML = "<div class=\"error\">Error: " + response.error + "</div>";
             }
         } catch (error) {
             console.error('Error cargando historial:', error);
@@ -4873,64 +4881,7 @@ function getWebAppScript() {
         document.getElementById('historialCierreModal').style.display = 'none';
     }
     
-    function renderHistorialTimeline(historial) {
-        const timeline = document.getElementById('historialTimeline');
-        
-        if (!historial || historial.length === 0) {
-            timeline.innerHTML = '<div class="text-center" style="color: var(--text-secondary);">No hay historial disponible</div>';
-            return;
-        }
-        
-        const timelineHTML = historial.map((entrada, index) => {
-            const isFirst = index === 0;
-            const accionColor = getAccionColor(entrada.accion);
-            const accionIcon = getAccionIcon(entrada.accion);
-            const fechaFormateada = formatFecha(entrada.fecha_accion);
-            
-            return `
-                <div style="position: relative; padding: 16px 0; ${!isFirst ? 'border-top: 1px solid var(--border-color);' : ''}">
-                    <!-- Icono de la línea de tiempo -->
-                    <div style="position: absolute; left: -8px; top: 20px; width: 24px; height: 24px; background: ${accionColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        ${accionIcon}
-                    </div>
-                    
-                    <div style="margin-left: 32px;">
-                        <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 8px;">
-                            <div>
-                                <div style="font-weight: 600; color: var(--text-primary); font-size: 14px;">
-                                    ${getAccionDisplayText(entrada.accion)} 
-                                    <span style="background: ${accionColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px;">
-                                        v${entrada.version_intento}
-                                    </span>
-                                </div>
-                                <div style="color: var(--text-secondary); font-size: 12px; margin-top: 2px;">
-                                    ${entrada.usuario_nombre} • ${fechaFormateada}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        ${entrada.comentarios ? `
-                            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid ${accionColor};">
-                                <strong>Comentarios:</strong><br>
-                                <span style="color: var(--text-secondary);">${entrada.comentarios}</span>
-                            </div>
-                        ` : ''}
-                        
-                        ${entrada.observaciones_cierre && entrada.accion === 'ENVIAR_CIERRE' ? `
-                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
-                                <strong>Detalles del cierre:</strong><br>
-                                • Observaciones: ${entrada.observaciones_cierre}<br>
-                                ${entrada.fecha_fin_trabajos ? '• Fecha fin trabajos: ' + formatFecha(entrada.fecha_fin_trabajos) : ''}
-                                ${entrada.fecha_inicio_trabajos ? '<br>• Fecha inicio trabajos: ' + formatFecha(entrada.fecha_inicio_trabajos) : ''}
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        timeline.innerHTML = timelineHTML;
-    }
+function renderHistorialTimeline(historial) {        const timeline = document.getElementById("historialTimeline");        if (!historial || historial.length === 0) {            timeline.innerHTML = "<div>No hay historial disponible</div>";            return;        }        const timelineHTML = historial.map(entrada => {            const fechaFormateada = formatFecha(entrada.fecha_accion);            return "<div style="padding: 12px; border-bottom: 1px solid #eee;"><strong>" + entrada.accion + "</strong><br>" +                   "<small>" + fechaFormateada + " - " + (entrada.usuario_nombre || "Sistema") + "</small></div>";        }).join("");        timeline.innerHTML = timelineHTML;    }
     
     function getEstadoDisplayText(estado) {
         const estados = {
