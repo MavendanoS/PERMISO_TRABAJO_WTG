@@ -2524,7 +2524,7 @@ export function getWebAppScript() {
                 html += '<td><span class="badge badge-' + (usuario.password_temporal ? 'warning' : 'success') + '">' + (usuario.password_temporal ? 'Sí' : 'No') + '</span></td>';
                 html += '<td>';
                 html += '<button class="btn btn-small btn-secondary" onclick="editarUsuario(' + usuario.id + ')" title="Editar">✏️</button>';
-                html += '<button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(' + usuario.id + ', \'' + ClientSecurity.encodeHTML(usuario.usuario) + '\')" title="Eliminar" style="margin-left: 4px;">🗑️</button>';
+                html += '<button class="btn btn-small btn-danger" onclick="confirmarEliminarUsuario(' + usuario.id + ', &#39;' + ClientSecurity.encodeHTML(usuario.usuario) + '&#39;)" title="Eliminar" style="margin-left: 4px;">🗑️</button>';
                 html += '</td>';
                 html += '</tr>';
             });
