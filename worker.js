@@ -607,7 +607,7 @@ function getSecurityHeaders() {
       "img-src 'self' data: https:",
       "font-src 'self' https://fonts.gstatic.com",
       "connect-src 'self'",
-      "manifest-src 'self' data:",
+      "manifest-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'"
@@ -660,7 +660,12 @@ const worker = {
     const corsHeaders = getCorsHeaders(env, request);
     
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { 
+        headers: { 
+          ...corsHeaders,
+          ...getSecurityHeaders()
+        }
+      });
     }
     
     try {
@@ -683,6 +688,31 @@ const worker = {
       // Inicializar DBs si existen
       if (env.DB_PERMISOS) {
         await initializeDatabase(env.DB_PERMISOS);
+      }
+      
+      // Manejar manifest.json
+      if (path === '/manifest.json') {
+        return new Response(JSON.stringify({
+          "name": "PT Wind - Permisos de Trabajo",
+          "short_name": "PT Wind",
+          "start_url": "/",
+          "display": "standalone",
+          "background_color": "#ffffff",
+          "theme_color": "#1a1f2e",
+          "scope": "/",
+          "icons": [{
+            "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAyODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIGZpbGw9IiMxYTFmMmUiLz48L3N2Zz4=",
+            "type": "image/svg+xml",
+            "sizes": "128x128"
+          }]
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=86400',
+            ...corsHeaders,
+            ...getSecurityHeaders()
+          }
+        });
       }
       
       // Manejar API
@@ -712,7 +742,8 @@ const worker = {
           status: 400,
           headers: { 
             'Content-Type': 'application/json',
-            ...corsHeaders
+            ...corsHeaders,
+            ...getSecurityHeaders()
           }
         });
       }
@@ -724,7 +755,8 @@ const worker = {
         status: 500,
         headers: { 
           'Content-Type': 'application/json',
-          ...corsHeaders
+          ...corsHeaders,
+          ...getSecurityHeaders()
         }
       });
     }
@@ -750,7 +782,10 @@ async function handleApiRequest(request, corsHeaders, env, services) {
   const { rateLimiter, authService, auditLogger } = services;
   console.log('handleApiRequest: Services extracted');
   const url = new URL(request.url);
-  const endpoint = url.pathname.replace('/api/', '');
+  // Clean the pathname to handle potential double /api/ patterns
+  let endpoint = url.pathname;
+  // Remove leading /api/ or /api/api/ patterns
+  endpoint = endpoint.replace(/^\/api\/(api\/)?/, '');
   console.log('handleApiRequest: Endpoint:', endpoint);
   
   try {
@@ -780,6 +815,8 @@ async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleChangePassword(request, corsHeaders, env, services);
       case 'users':
         return await handleUsers(request, corsHeaders, env);
+      case 'admin-users':
+        return await handleAdminUsers(request, corsHeaders, env, currentUser, services);
       case 'personal':
         return await handlePersonal(request, corsHeaders, env);
       case 'personal-by-parque':
@@ -808,6 +845,8 @@ async function handleApiRequest(request, corsHeaders, env, services) {
         return await handleGenerateRegister(request, corsHeaders, env);
       case 'health':
         return await handleHealth(request, corsHeaders, env);
+      case 'system-stats':
+        return await handleSystemStats(request, corsHeaders, env, currentUser, services);
       default:
         return new Response(JSON.stringify({ error: 'Endpoint not found' }), {
           status: 404,
@@ -1029,6 +1068,43 @@ async function handleUsers(request, corsHeaders, env) {
   } catch (error) {
     return new Response(JSON.stringify({ 
       error: 'Error loading users', 
+      details: error.message 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+async function handleAdminUsers(request, corsHeaders, env, currentUser, services) {
+  try {
+    // Ensure only admin users can access this endpoint
+    if (!currentUser || currentUser.rol !== 'admin') {
+      return new Response(JSON.stringify({ 
+        error: 'Access denied. Admin privileges required.' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    const result = await env.DB_MASTER.prepare(`
+      SELECT id, usuario, email, rol, empresa, parques_autorizados, 
+             puede_actualizar_personal, ultimo_login, created_at
+      FROM usuarios
+      ORDER BY usuario ASC
+    `).all();
+    
+    return new Response(JSON.stringify({
+      results: result.results || [],
+      has_more: false
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  } catch (error) {
+    console.error('Error in handleAdminUsers:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Error loading admin users', 
       details: error.message 
     }), {
       status: 500,
@@ -1303,6 +1379,65 @@ async function handleActividades(request, corsHeaders, env) {
   } catch (error) {
     return new Response(JSON.stringify({ 
       error: 'Error loading actividades', 
+      details: error.message 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
+
+async function handleSystemStats(request, corsHeaders, env, currentUser, services) {
+  try {
+    // Verificar que el usuario sea Admin
+    if (!currentUser || currentUser.rol !== 'Admin') {
+      return new Response(JSON.stringify({ 
+        error: 'Access denied. Admin privileges required.' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Obtener estadísticas del sistema de forma concurrente
+    const [parquesResult, personalEnelResult, personalExternoResult] = await Promise.all([
+      // Total de parques
+      env.DB_MASTER.prepare(`SELECT COUNT(*) as count FROM parques_eolicos`).first(),
+      
+      // Personal ENEL (Supervisor Enel, Admin, Enel Otro)
+      env.DB_MASTER.prepare(`
+        SELECT COUNT(*) as count FROM usuarios 
+        WHERE rol IN ('Supervisor Enel', 'Admin', 'Enel Otro') 
+        AND estado = 'Activo'
+      `).first(),
+      
+      // Personal Externo (Lead Technician, Technician y otros roles no-ENEL)
+      env.DB_MASTER.prepare(`
+        SELECT COUNT(*) as count FROM usuarios 
+        WHERE rol IN ('Lead Technician', 'Technician') 
+        OR (rol NOT IN ('Supervisor Enel', 'Admin', 'Enel Otro') AND estado = 'Activo')
+      `).first()
+    ]);
+
+    const stats = {
+      totalParques: parquesResult?.count || 0,
+      personalEnel: personalEnelResult?.count || 0,
+      personalExterno: personalExternoResult?.count || 0,
+      lastUpdated: new Date().toISOString()
+    };
+
+    return new Response(JSON.stringify({
+      success: true,
+      stats: stats
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+    
+  } catch (error) {
+    console.error('Error getting system stats:', error);
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: 'Error loading system statistics', 
       details: error.message 
     }), {
       status: 500,
@@ -2631,7 +2766,7 @@ function getWebApp() {
     '<meta charset=\"UTF-8\">' +
     '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +
     '<title>PT Wind - Sistema de Gestión de Permisos</title>' +
-    '<link rel=\"manifest\" href=\"data:application/json;base64,eyJuYW1lIjoiUFQgV2luZCAtIFBlcm1pc29zIGRlIFRyYWJham8iLCJzaG9ydF9uYW1lIjoiUFQgV2luZCIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMWExZjJlIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjNhV1IwYUQwaU1USTRJaUJvWldsbmFIUTlJakV5T0NJZ2RtbGxkMEp2ZUQwaU1DQXdJREV5T0NBeU9EZ2lJSGh0Ykc1elBTSm9kSFJ3T2k4dmQzZDNMbmN6TG05eVp5OHlNREF3TDNOMlp5SStQSEpsWTNRZ2VEMGlOQ0lnZVQwaU5DSWdkMmxrZEdnOUlqRXlNQ0lnYUdWcFoyaDBQU0l4TWpBaUlHWnBiR3c5SWlNeFlURm1NbVVpTHo0OEwzTjJaejQ9IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJzaXplcyI6IjEyOHgxMjgifV19\">' +
+    '<link rel=\"manifest\" href=\"/manifest.json">' +
     '<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">' +
     '<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>' +
     '<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">' +
@@ -2740,7 +2875,6 @@ function getWebApp() {
                                     '<option value=\"\">Seleccionar tipo...</option>' +
                                     '<option value=\"PREVENTIVO\">Mantenimiento Preventivo</option>' +
                                     '<option value=\"CORRECTIVO\">Pequeño Correctivo</option>' +
-                                    '<option value=\"GRAN_CORRECTIVO\">Gran Correctivo</option>' +
                                     '<option value=\"PREDICTIVO\">Mantenimiento Predictivo</option>' +
                                     '<option value=\"INSPECCION\">Inspección Técnica</option>' +
                                     '<option value=\"OTROS\">Otros</option>' +
@@ -2919,8 +3053,8 @@ function getWebApp() {
                         '<label for=\"materialPropietario\">Propietario</label>' +
                         '<select id=\"materialPropietario\">' +
                             '<option value=\"ENEL\">ENEL</option>' +
-                            '<option value=\"CONTRATISTA\">Contratista</option>' +
-                            '<option value=\"PROVEEDOR\">Proveedor</option>' +
+                            '<option value=\"MANTENEDOR\">Mantenedor</option>' +
+                            '<option value=\"OTRO\">Otro</option>' +
                         '</select>' +
                     '</div>' +
                     '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
@@ -2928,7 +3062,6 @@ function getWebApp() {
                         '<select id=\"materialAlmacen\">' +
                             '<option value=\"Central\">Central</option>' +
                             '<option value=\"Sitio\">Sitio</option>' +
-                            '<option value=\"Móvil\">Móvil</option>' +
                         '</select>' +
                     '</div>' +
                     '<button type=\"button\" id=\"addMaterialBtn\" class=\"btn btn-secondary btn-small\">+</button>' +
@@ -3984,7 +4117,7 @@ function getWebAppScript() {
             document.getElementById('userDisplay').textContent = 
                 ClientSecurity.encodeHTML(currentUser.usuario + ' (' + currentUser.rol + ')');
             
-            if (currentUser.rol === 'ADMIN') {
+            if (currentUser.rol === 'Admin') {
                 document.getElementById('tabDatos').style.display = 'block';
             }
         }
@@ -5001,26 +5134,122 @@ function renderHistorialTimeline(historial) {        const timeline = document.g
         document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
         document.getElementById('tab-' + tabName).classList.add('active');
         
-        if (tabName === 'datos' && currentUser?.rol === 'ADMIN') {
+        if (tabName === 'datos' && currentUser?.rol === 'Admin') {
             loadDatosTab();
         }
     }
     
     async function loadDatosTab() {
-        const parquesContainer = document.getElementById('parquesContainer');
-        parquesContainer.innerHTML = \`<p>Total: \${parquesData.length} parques</p>\`;
-        parquesData.forEach(parque => {
-            parquesContainer.innerHTML += \`<div>• \${parque.nombre}</div>\`;
-        });
+        console.log('Loading admin data tab...');
         
-        const personalContainer = document.getElementById('personalContainer');
-        personalContainer.innerHTML = \`<p>Total: \${personalData.length} personas</p>\`;
-        
-        const supervisoresContainer = document.getElementById('supervisoresContainer');
-        supervisoresContainer.innerHTML = \`<p>Total: \${supervisoresData.length} supervisores</p>\`;
-        
-        const actividadesContainer = document.getElementById('actividadesContainer');
-        actividadesContainer.innerHTML = \`<p>Total: \${actividadesData.length} actividades</p>\`;
+        try {
+            // Load system statistics
+            const statsResponse = await ClientSecurity.makeSecureRequest('/system-stats');
+            console.log('System stats response:', statsResponse);
+            
+            // Load admin users
+            const usersResponse = await ClientSecurity.makeSecureRequest('/admin-users');
+            console.log('Admin users response:', usersResponse);
+            
+            // Update parques container
+            const parquesContainer = document.getElementById('parquesContainer');
+            parquesContainer.innerHTML = \`
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                    <div style="background: var(--success-color); background: rgba(34, 197, 94, 0.1); color: var(--success-color); padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(34, 197, 94, 0.2);">
+                        <div style="font-size: 24px; font-weight: 600;">\${statsResponse.stats?.totalParques || 0}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Total Parques</div>
+                    </div>
+                    <div style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <div style="font-size: 24px; font-weight: 600;">\${statsResponse.stats?.totalPermisos || 0}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Total Permisos</div>
+                    </div>
+                </div>
+                <h4 style="margin-bottom: 12px;">Lista de Parques:</h4>
+            \`;
+            parquesData.forEach(parque => {
+                parquesContainer.innerHTML += \`<div style="padding: 8px; background: var(--bg-secondary); margin-bottom: 4px; border-radius: 4px;">• \${parque.nombre}</div>\`;
+            });
+            
+            // Update personal container with stats
+            const personalContainer = document.getElementById('personalContainer');
+            personalContainer.innerHTML = \`
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                    <div style="background: rgba(16, 185, 129, 0.1); color: #10b981; padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <div style="font-size: 24px; font-weight: 600;">\${statsResponse.stats?.personalEnel || 0}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Personal ENEL</div>
+                    </div>
+                    <div style="background: rgba(245, 158, 11, 0.1); color: #f59e0b; padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(245, 158, 11, 0.2);">
+                        <div style="font-size: 24px; font-weight: 600;">\${statsResponse.stats?.personalExterno || 0}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Personal Externo</div>
+                    </div>
+                    <div style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; padding: 16px; border-radius: 6px; text-align: center; border: 1px solid rgba(139, 92, 246, 0.2);">
+                        <div style="font-size: 24px; font-weight: 600;">\${usersResponse.total || 0}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Total Usuarios</div>
+                    </div>
+                </div>
+                <h4 style="margin-bottom: 12px;">Gestión de Usuarios:</h4>
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                                <th style="padding: 8px; text-align: left; font-size: 12px;">Usuario</th>
+                                <th style="padding: 8px; text-align: left; font-size: 12px;">Email</th>
+                                <th style="padding: 8px; text-align: left; font-size: 12px;">Rol</th>
+                                <th style="padding: 8px; text-align: left; font-size: 12px;">Estado</th>
+                                <th style="padding: 8px; text-align: left; font-size: 12px;">Último Login</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            \`;
+            
+            if (usersResponse.users && usersResponse.users.length > 0) {
+                usersResponse.users.forEach(user => {
+                    const statusColor = user.estado === 'Activo' ? 'var(--success-color)' : 'var(--warning-color)';
+                    const passwordStatus = user.password_temporal === 1 ? '🔒' : '';
+                    personalContainer.innerHTML += \`
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 8px; font-size: 12px;">\${passwordStatus} \${ClientSecurity.encodeHTML(user.usuario || '')}</td>
+                            <td style="padding: 8px; font-size: 12px;">\${ClientSecurity.encodeHTML(user.email || '')}</td>
+                            <td style="padding: 8px; font-size: 12px;"><span style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">\${ClientSecurity.encodeHTML(user.rol || '')}</span></td>
+                            <td style="padding: 8px; font-size: 12px;"><span style="color: \${statusColor};">●</span> \${ClientSecurity.encodeHTML(user.estado || '')}</td>
+                            <td style="padding: 8px; font-size: 12px;">\${formatDate(user.ultimo_login)}</td>
+                        </tr>
+                    \`;
+                });
+            } else {
+                personalContainer.innerHTML += '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-secondary);">No hay usuarios disponibles</td></tr>';
+            }
+            
+            personalContainer.innerHTML += '</tbody></table></div>';
+            
+            // Update supervisores container
+            const supervisoresContainer = document.getElementById('supervisoresContainer');
+            supervisoresContainer.innerHTML = \`<p>Total: \${supervisoresData.length} supervisores</p>\`;
+            supervisoresData.forEach(supervisor => {
+                supervisoresContainer.innerHTML += \`<div style="padding: 8px; background: var(--bg-secondary); margin-bottom: 4px; border-radius: 4px;">• \${supervisor.nombre} - \${supervisor.cargo || 'N/A'}</div>\`;
+            });
+            
+            // Update actividades container
+            const actividadesContainer = document.getElementById('actividadesContainer');
+            actividadesContainer.innerHTML = \`<p>Total: \${actividadesData.length} actividades</p>\`;
+            actividadesData.forEach(actividad => {
+                actividadesContainer.innerHTML += \`<div style="padding: 8px; background: var(--bg-secondary); margin-bottom: 4px; border-radius: 4px;">• \${actividad.nombre}</div>\`;
+            });
+            
+            console.log('Admin data tab loaded successfully');
+            
+        } catch (error) {
+            console.error('Error loading admin data tab:', error);
+            
+            // Show error state for containers
+            const containers = ['parquesContainer', 'personalContainer', 'supervisoresContainer', 'actividadesContainer'];
+            containers.forEach(containerId => {
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = \`<div style="color: var(--error-color); padding: 16px; text-align: center;">Error cargando datos: \${error.message}</div>\`;
+                }
+            });
+        }
     }
     
     function formatDate(dateString) {
@@ -5063,9 +5292,7 @@ function renderHistorialTimeline(historial) {        const timeline = document.g
     // ========================================================================
     // AUTO-LOGOUT POR INACTIVIDAD
     // ========================================================================
-    
-    let inactivityTimer;
-    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos
+    // Timer de inactividad definido en script.js
     
     function resetInactivityTimer() {
         clearTimeout(inactivityTimer);

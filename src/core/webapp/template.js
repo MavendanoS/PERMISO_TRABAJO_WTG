@@ -8,7 +8,7 @@ export function getWebApp() {
     '<meta charset=\"UTF-8\">' +
     '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +
     '<title>PT Wind - Sistema de Gestión de Permisos</title>' +
-    '<link rel=\"manifest\" href=\"data:application/json;base64,eyJuYW1lIjoiUFQgV2luZCAtIFBlcm1pc29zIGRlIFRyYWJham8iLCJzaG9ydF9uYW1lIjoiUFQgV2luZCIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMWExZjJlIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjNhV1IwYUQwaU1USTRJaUJvWldsbmFIUTlJakV5T0NJZ2RtbGxkMEp2ZUQwaU1DQXdJREV5T0NBeE1qZ2lJSGh0Ykc1elBTSm9kSFJ3T2k4dmQzZDNMbmN6TG05eVp5OHlNREF3TDNOMlp5SStQSEpsWTNRZ2VEMGlOQ0lnZVQwaU5DSWdkMmxrZEdnOUlqRXlNQ0lnYUdWcFoyaDBQU0l4TWpBaUlHWnBiR3c5SWlNeFlURm1NbVVpTHo0OEwzTjJaejQ9IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJzaXplcyI6IjEyOHgxMjgifV19\">' +
+    '<link rel=\"manifest\" href=\"/manifest.json\">' +
     '<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">' +
     '<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>' +
     '<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">' +
@@ -34,7 +34,12 @@ export function getWebApp() {
                     '<input type=\"password\" id=\"password\" required placeholder=\"Ingrese su contraseña\" autocomplete=\"current-password\">' +
                 '</div>' +
                 
-                '<button type=\"submit\" class=\"btn\" id=\"loginBtn\">Iniciar Sesión</button>' +
+                '<button type=\"submit\" class=\"btn\" id=\"loginBtn\" style=\"position: relative;\">' +
+                    '<span id=\"loginBtnText\">Iniciar Sesión</span>' +
+                    '<div id=\"loginBtnSpinner\" style=\"display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);\">' +
+                        '<div style=\"width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid white; border-radius: 50%; animation: spin 1s linear infinite;\"></div>' +
+                    '</div>' +
+                '</button>' +
                 
                 '<div id=\"loginError\" class=\"error\" style=\"display: none; margin-top: 16px;\"></div>' +
             '</form>' +
@@ -62,7 +67,6 @@ export function getWebApp() {
                 '<button class=\"tab active\" data-tab=\"nuevo\">Nuevo Permiso</button>' +
                 '<button class=\"tab\" data-tab=\"consultar\">Consultar Permisos</button>' +
                 '<button class=\"tab\" data-tab=\"matriz\">Matriz de Riesgos</button>' +
-                '<button class=\"tab\" data-tab=\"datos\" id=\"tabDatos\" style=\"display: none;\">Datos del Sistema</button>' +
                 '<button class=\"tab\" data-tab=\"admin-usuarios\" id=\"tabAdminUsuarios\" style=\"display: none;\">Administración de Usuarios</button>' +
             '</div>' +
             
@@ -118,7 +122,6 @@ export function getWebApp() {
                                     '<option value=\"\">Seleccionar tipo...</option>' +
                                     '<option value=\"PREVENTIVO\">Mantenimiento Preventivo</option>' +
                                     '<option value=\"CORRECTIVO\">Pequeño Correctivo</option>' +
-                                    '<option value=\"GRAN_CORRECTIVO\">Gran Correctivo</option>' +
                                     '<option value=\"PREDICTIVO\">Mantenimiento Predictivo</option>' +
                                     '<option value=\"INSPECCION\">Inspección Técnica</option>' +
                                     '<option value=\"OTROS\">Otros</option>' +
@@ -228,40 +231,52 @@ export function getWebApp() {
                 '</div>' +
             '</div>' +
             
-            '<!-- Tab: Datos del Sistema -->' +
-            '<div id=\"tab-datos\" class=\"tab-content\">' +
-                '<div style=\"display: flex; flex-direction: column; gap: 24px;\">' +
-                    '<div class=\"card\">' +
-                        '<h3>Parques Eólicos</h3>' +
-                        '<div id=\"parquesContainer\" class=\"loading\">Cargando parques...</div>' +
-                    '</div>' +
-                    
-                    '<div class=\"card\">' +
-                        '<h3>Personal</h3>' +
-                        '<div id=\"personalContainer\" class=\"loading\">Cargando personal...</div>' +
-                    '</div>' +
-                    
-                    '<div class=\"card\">' +
-                        '<h3>Supervisores</h3>' +
-                        '<div id=\"supervisoresContainer\" class=\"loading\">Cargando supervisores...</div>' +
-                    '</div>' +
-                    
-                    '<div class=\"card\">' +
-                        '<h3>Actividades</h3>' +
-                        '<div id=\"actividadesContainer\" class=\"loading\">Cargando actividades...</div>' +
-                    '</div>' +
-                '</div>' +
-            '</div>' +
-            
             '<!-- Tab: Administración de Usuarios -->' +
             '<div id="tab-admin-usuarios" class="tab-content">' +
+                '<!-- Statistics Header -->' +
+                '<div class="stats-header">' +
+                    '<div class="stats-grid">' +
+                        '<div class="stat-card">' +
+                            '<div class="stat-icon plant">🏭</div>' +
+                            '<div class="stat-content">' +
+                                '<div class="stat-number" id="stat-plantas">-</div>' +
+                                '<div class="stat-label">Total Plantas</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="stat-card">' +
+                            '<div class="stat-icon personnel-enel">👥</div>' +
+                            '<div class="stat-content">' +
+                                '<div class="stat-number" id="stat-personal-enel">-</div>' +
+                                '<div class="stat-label">Personal ENEL</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="stat-card">' +
+                            '<div class="stat-icon personnel-externo">👨‍🔧</div>' +
+                            '<div class="stat-content">' +
+                                '<div class="stat-number" id="stat-personal-externo">-</div>' +
+                                '<div class="stat-label">Personal Externo</div>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+                
                 '<div class="card">' +
                     '<h3>Administración de Usuarios</h3>' +
                     
-                    '<!-- Botones de acción -->' +
-                    '<div style="margin-bottom: 24px;">' +
-                        '<button id="btnNuevoUsuario" class="btn btn-primary">Nuevo Usuario</button>' +
-                        '<button id="btnRefreshUsuarios" class="btn btn-secondary" style="margin-left: 12px;">Actualizar Lista</button>' +
+                    '<!-- Controls section -->' +
+                    '<div class="admin-controls">' +
+                        '<div class="search-section">' +
+                            '<div class="search-input-wrapper">' +
+                                '<input type="text" id="searchUsuarios" class="search-usuarios-input" placeholder="Buscar usuarios...">' +
+                                '<button id="btnClearSearch" class="btn-clear-search" title="Limpiar búsqueda">' +
+                                    '<span class="clear-icon">✕</span>' +
+                                '</button>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="action-buttons">' +
+                            '<button id="btnNuevoUsuario" class="btn btn-compact btn-primary">Nuevo Usuario</button>' +
+                            '<button id="btnRefreshUsuarios" class="btn btn-compact btn-secondary">Actualizar Lista</button>' +
+                        '</div>' +
                     '</div>' +
                     
                     '<!-- Lista de usuarios -->' +
@@ -323,8 +338,8 @@ export function getWebApp() {
                         '<label for=\"materialPropietario\">Propietario</label>' +
                         '<select id=\"materialPropietario\">' +
                             '<option value=\"ENEL\">ENEL</option>' +
-                            '<option value=\"CONTRATISTA\">Contratista</option>' +
-                            '<option value=\"PROVEEDOR\">Proveedor</option>' +
+                            '<option value=\"MANTENEDOR\">Mantenedor</option>' +
+                            '<option value=\"OTRO\">Otro</option>' +
                         '</select>' +
                     '</div>' +
                     '<div class=\"form-group\" style=\"margin-bottom: 0;\">' +
@@ -332,7 +347,6 @@ export function getWebApp() {
                         '<select id=\"materialAlmacen\">' +
                             '<option value=\"Central\">Central</option>' +
                             '<option value=\"Sitio\">Sitio</option>' +
-                            '<option value=\"Contratista\">Contratista</option>' +
                         '</select>' +
                     '</div>' +
                     '<button type=\"button\" id=\"addMaterialBtn\" class=\"btn btn-secondary btn-small\">+</button>' +
@@ -417,19 +431,27 @@ export function getWebApp() {
                 '<!-- Los requisitos se insertan dinámicamente -->' +
             '</div>' +
             
-            '<div class="form-group">' +
-                '<label for="mandatoryNewPassword">Nueva Contraseña</label>' +
-                '<input type="password" id="mandatoryNewPassword" required placeholder="Mínimo 8 caracteres">' +
-            '</div>' +
-            
-            '<div class="form-group">' +
-                '<label for="mandatoryConfirmPassword">Confirmar Nueva Contraseña</label>' +
-                '<input type="password" id="mandatoryConfirmPassword" required placeholder="Repite la contraseña">' +
-            '</div>' +
+            '<form>' +
+                '<div class="form-group">' +
+                    '<label for="mandatoryNewPassword">Nueva Contraseña</label>' +
+                    '<input type="password" id="mandatoryNewPassword" required placeholder="Mínimo 8 caracteres" autocomplete="new-password">' +
+                '</div>' +
+                
+                '<div class="form-group">' +
+                    '<label for="mandatoryConfirmPassword">Confirmar Nueva Contraseña</label>' +
+                    '<input type="password" id="mandatoryConfirmPassword" required placeholder="Repite la contraseña" autocomplete="new-password">' +
+                '</div>' +
+            '</form>' +
             
             '<div id="changePasswordError" class="error" style="display: none; margin-bottom: 16px;"></div>' +
+            '<div id="changePasswordSuccess" class="success" style="display: none; margin-bottom: 16px;"></div>' +
             
-            '<button id="submitPasswordChangeBtn" class="btn" style="width: 100%;">Cambiar Contraseña y Continuar</button>' +
+            '<button id="submitPasswordChangeBtn" class="btn" style="width: 100%; position: relative;">' +
+                '<span id="submitPasswordChangeText">Cambiar Contraseña y Continuar</span>' +
+                '<div id="submitPasswordChangeSpinner" style="display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);">' +
+                    '<div style="width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>' +
+                '</div>' +
+            '</button>' +
             
             '<p style="margin-top: 16px; font-size: 12px; color: var(--text-secondary); text-align: center;">' +
                 'No podrás acceder al sistema hasta cambiar tu contraseña' +
@@ -446,38 +468,61 @@ export function getWebApp() {
               '<div class="grid-two" style="gap: 16px; margin-bottom: 16px;">' +
                   '<div class="form-group">' +
                       '<label for="modalUsuario">Usuario *</label>' +
-                      '<input type="text" id="modalUsuario" required placeholder="Nombre de usuario">' +
+                      '<input type="text" id="modalUsuario" required placeholder="Nombre de usuario" autocomplete="username">' +
                   '</div>' +
                   '<div class="form-group">' +
                       '<label for="modalEmail">Email *</label>' +
-                      '<input type="email" id="modalEmail" required placeholder="email@empresa.com">' +
+                      '<input type="email" id="modalEmail" required placeholder="email@empresa.com" autocomplete="email">' +
                   '</div>' +
               '</div>' +
               
               '<div class="grid-two" style="gap: 16px; margin-bottom: 16px;">' +
                   '<div class="form-group">' +
                       '<label for="modalPassword">Contraseña</label>' +
-                      '<input type="password" id="modalPassword" placeholder="Dejar vacío para mantener actual">' +
+                      '<input type="password" id="modalPassword" placeholder="Dejar vacío para mantener actual" autocomplete="new-password">' +
                   '</div>' +
                   '<div class="form-group">' +
                       '<label for="modalRol">Rol *</label>' +
                       '<select id="modalRol" required>' +
                           '<option value="">Seleccionar rol...</option>' +
-                          '<option value="operador">Operador</option>' +
-                          '<option value="supervisor">Supervisor</option>' +
-                          '<option value="admin">Admin</option>' +
+                          '<option value="Admin">Admin</option>' +
+                          '<option value="Supervisor Enel">Supervisor Enel</option>' +
+                          '<option value="Lead Technician">Lead Technician</option>' +
+                          '<option value="Technician">Technician</option>' +
+                          '<option value="Enel Otro">Enel Otro</option>' +
                       '</select>' +
                   '</div>' +
               '</div>' +
               
               '<div class="form-group" style="margin-bottom: 16px;">' +
                   '<label for="modalEmpresa">Empresa</label>' +
-                  '<input type="text" id="modalEmpresa" placeholder="Nombre de la empresa">' +
+                  '<input type="text" id="modalEmpresa" placeholder="Nombre de la empresa" autocomplete="organization">' +
+              '</div>' +
+              
+              '<div class="grid-two" style="gap: 16px; margin-bottom: 16px;">' +
+                  '<div class="form-group">' +
+                      '<label for="modalRut">RUT/DNI *</label>' +
+                      '<input type="text" id="modalRut" required placeholder="12345678-9" maxlength="13" autocomplete="off">' +
+                  '</div>' +
+                  '<div class="form-group">' +
+                      '<label for="modalTelefono">Teléfono</label>' +
+                      '<input type="tel" id="modalTelefono" placeholder="+56912345678" autocomplete="tel">' +
+                  '</div>' +
               '</div>' +
               
               '<div class="form-group" style="margin-bottom: 16px;">' +
-                  '<label for="modalParquesAutorizados">Parques Autorizados</label>' +
-                  '<input type="text" id="modalParquesAutorizados" placeholder="Parques separados por comas">' +
+                  '<label for="modalCargo">Cargo</label>' +
+                  '<input type="text" id="modalCargo" placeholder="Cargo o posición" autocomplete="organization-title">' +
+              '</div>' +
+              
+              '<div class="form-group" style="margin-bottom: 16px;">' +
+                  '<label for="modalParquesAutorizados">Parques Autorizados *</label>' +
+                  '<select id="modalParquesAutorizados" multiple required style="min-height: 120px;">' +
+                      '<option value="">Cargando parques...</option>' +
+                  '</select>' +
+                  '<div class="multi-select-helper">' +
+                      '💡 Mantén presionado Ctrl (o Cmd en Mac) para seleccionar múltiples parques' +
+                  '</div>' +
               '</div>' +
               
               '<div class="grid-two" style="gap: 16px; margin-bottom: 24px;">' +
